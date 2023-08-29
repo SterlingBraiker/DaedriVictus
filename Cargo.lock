@@ -3,5 +3,9 @@
 version = 3
 
 [[package]]
+<<<<<<< HEAD
 name = "hello_cargo"
+=======
+name = "new_project"
+>>>>>>> DaedriVictus/master
 version = "0.1.0"
