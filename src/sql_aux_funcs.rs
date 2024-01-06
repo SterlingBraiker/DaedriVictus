@@ -11,12 +11,12 @@ use crate::sqlite3_interface::*;
 
 /* --> Structs */
 
-#[derive(Clone, Default)]
-pub struct RecordSet<T> {
-	pub column_info: HashMap<String, T>,
+#[derive(Clone)]
+pub struct RecordSet<T, U> {
+	pub column_info: HashMap<String, U>,
 	pub column_order: Vec<String>,
 	pub records: Vec<Record<T>>,
-	pub paged_records: Vec<Record<T>>,
+	pub paged_records: Vec<Record<T>>, //consider changing this to a std::slice for performance?
 }
 
 #[derive(Clone, Default)]
@@ -24,8 +24,8 @@ pub struct Record<T> {
 	pub columns: HashMap<String, T>,
 }
 
-impl RecordSet {
-	fn construct(&mut self, stmt: &mut sqlite::Statement) -> Result<(), sqlite::Error> { 
+impl RecordSet<sqlite::Value, sqlite::Type> {
+	pub fn construct(&mut self, stmt: &mut sqlite::Statement) -> Result<(), sqlite::Error> { 
 		stmt.next()?;
 
 		for name in stmt.column_names() {
@@ -38,15 +38,15 @@ impl RecordSet {
 		stmt.reset()
 	} //fill fields 'column_count', 'column_info'
 	
-	fn add(&mut self, rec: Record) { 
+	pub fn add(&mut self, rec: Record<sqlite::Value>) { 
 		self.records.push(rec);
 	} //insert a record into the recordset
 
-	fn record_count(&self) -> usize {
+	pub fn record_count(&self) -> usize {
 		self.records.len()
 	}
 	
-	fn column_count(&self) -> usize {
+	pub fn column_count(&self) -> usize {
 		self.records.first().unwrap().columns.len()
 	}
 	
@@ -59,22 +59,20 @@ impl RecordSet {
 	}
 	
 }
-/*
-impl <T> Default for RecordSet<T>
-	where
-	T: Default {
-		fn default() -> Self {
-			Self { 
-				column_info: HashMap::<String, T::default()>::new(),
-				column_order: Vec::<String>::new(),
-				records: Vec::<Record>::new(),
-				paged_records: Vec::<Record>::new(),
-			}
+
+impl Default for RecordSet<sqlite::Value, sqlite::Type> {
+	fn default() -> Self {
+		Self { 
+			column_info: HashMap::<String, sqlite::Type>::new(),
+			column_order: Vec::<String>::new(),
+			records: Vec::<Record<sqlite::Value>>::new(),
+			paged_records: Vec::<Record<sqlite::Value>>::new(),
 		}
+	}
 }
-*/
-impl Record {
-	fn add(&mut self, key: String, val: sqlite::Value) {
+
+impl Record<sqlite::Value> {
+	pub fn add(&mut self, key: String, val: sqlite::Value) {
 		self.columns.insert(key, val);
 	}
 }
@@ -88,6 +86,7 @@ pub trait SqliteTranslation {
 	fn translate(&self) -> String;
 }
 //convert this to `to_string()` and implement a proper `translate` to convert from sqlite::value to native rust values
+//impl SqliteTranslation for sqlite::Value {
 impl SqliteTranslation for sqlite::Value {
 	fn translate(&self) -> String {
 		let mut payload: String = String::new();

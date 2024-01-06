@@ -8,7 +8,7 @@
 /* --> imports */
 
 mod sqlite3_interface;
-mod odbc_interface;
+//mod odbc_interface;
 mod learning_fltk;
 mod fltk_messages;
 mod AuxFuncs;

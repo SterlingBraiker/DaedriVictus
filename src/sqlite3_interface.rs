@@ -6,11 +6,13 @@ pub use sqlite::{Connection, State, Statement,
 			Integer as SqliteInteger, 
 			Null as SqliteNull, 
 			String as SqliteString},
+	Type,
 	BindableWithIndex,
 	Bindable};
 use std::collections::HashMap;
 use std::io;
 use std::fs;
+use crate::sql_aux_funcs::SqliteTranslation;
 pub use crate::sql_aux_funcs::{RecordSet, Record};
 
 /* <-- Imports */
@@ -21,7 +23,7 @@ pub use crate::sql_aux_funcs::{RecordSet, Record};
 /* <-- Enums */
 /* --> Functions */
 
-pub fn raw_query(db_name: String, query: String) -> Result<RecordSet<sqlite::Value>, sqlite::Error> {
+pub fn raw_query(db_name: String, query: String) -> Result<RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
 	let db_handle = sqlite::open(&db_name)?;
 
 	//do I need to trim the query here? Is this always a safe practice?
@@ -101,13 +103,13 @@ fn select_from(
 	db_handle: &sqlite::Connection,
 	query: &str) -> 
 	Result<
-		RecordSet<sqlite::Value>,
+		RecordSet<sqlite::Value, sqlite::Type>,
 		sqlite::Error> {
 	let mut stmt = db_handle.prepare(query)?;
 	//bind parameters function call here
 	
 	//construct recordset meta data
-	let mut record_set = RecordSet { 
+	let mut record_set: RecordSet<sqlite::Value, sqlite::Type> = RecordSet { 
 		column_info: HashMap::new(),
 		column_order: Vec::new(),
 		records: Vec::new(),
@@ -119,7 +121,7 @@ fn select_from(
 	while let Ok(State::Row) = stmt.next() {
 		//new row available
 		//create a new record object
-		let mut current_row: Record = Record {  columns: HashMap::new(), };
+		let mut current_row: Record<sqlite::Value> = Record {  columns: HashMap::new(), };
 		
 		//parse the columns in the row
 		for (name, _) in &record_set.column_info {
@@ -147,26 +149,26 @@ fn select_from(
   	Ok(record_set)
 }
 
-pub fn print_results(record_set: &RecordSet<sqlite::Value>) -> String {
+pub fn print_results(record_set: &RecordSet<sqlite::Value, sqlite::Type>) -> String {
 	println!("Printing records\n==============\n");
 	let mut text_payload: String = String::new();
 	let mut current_line: String = String::new();
 
 	//first printout is columns	
-	for column_name in &record_set.column_order {
-		current_line.push_str(&column_name.to_string()[..]);
-		if &column_name != &record_set.column_order.last().unwrap() {
-			current_line.push(',');
-			current_line.push(' ');
-		}
-		else { current_line.push('\n') }
-	}
-	text_payload.push_str(&current_line.to_string()[..]);
-
-	//followed by a printout of data
-	for record in &record_set.records {
-		current_line.clear();
-		for v in &record_set.column_order {
+	for column_name in &record_set.column_order {  
+		current_line.push_str(&column_name.to_string()[..]);  
+		if &column_name != &record_set.column_order.last().unwrap() {  
+			current_line.push(',');  
+			current_line.push(' ');  
+		}  
+		else { current_line.push('\n') }  
+	}  
+	text_payload.push_str(&current_line.to_string()[..]);  
+  
+	//followed by a printout of data  
+	for record in &record_set.records {  
+		current_line.clear();  
+		for v in &record_set.column_order {  
 			match record.columns.get(v) {
 				Some(value) => {
 					current_line.push_str(&value.translate())

@@ -30,7 +30,7 @@ pub fn entry_point() {
 	}
 }
 
-pub fn connect(recordset: &mut Vec<Vec<String>>, dsn: String, sql_text: String) -> std::result::Result<(), DiagnosticRecord> {
+pub fn connect(recordset: &mut Vec<Vec<String>>, _dsn: String, sql_text: String) -> std::result::Result<(), DiagnosticRecord> {
 
     let env = create_environment_v3().map_err(|e| e.unwrap())?;
     //let conn = env.connect_with_connection_string(&dsn)?; //force the connection now to a single file, allow for user choice later

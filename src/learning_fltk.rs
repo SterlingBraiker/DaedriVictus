@@ -106,7 +106,7 @@ fn init_gui<'a>() {
 	
 	main_menu.add_choice("File|Option");
 	
-	let mut record_grid_group: Flex = Flex::default()
+	let record_grid_group: Flex = Flex::default()
 	.with_size(1000,650)
 	.below_of(&main_menu, 5);
 
@@ -228,7 +228,7 @@ fn init_gui<'a>() {
 		f.fltk_windows[0].set_pos(x, y - (760 / 2));
 	}
 
-	let mut current_record_set: sqlite3::RecordSet = sqlite3::RecordSet::default();
+	let mut current_record_set: sqlite3::RecordSet<sqlite::Value, sqlite::Type> = sqlite3::RecordSet::default();
 	let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
 	let mut outputs: Vec<MultilineOutput> = Vec::new();
 	
@@ -330,10 +330,10 @@ fn center() -> (i32, i32) {
 
 fn attempt_query(
 	textinput: &str) 
-	-> Result<sqlite3::RecordSet<sqlite3::sqlite::Value>, sqlite::Error> {
+	-> Result<sqlite3::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
 
 	sqlite3::raw_query(
-		String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db"), 
+		String::from(".\\src\\copy_of_dv.db"), 
 		String::from(textinput))
 }
 
@@ -357,7 +357,7 @@ fn clear_table(table: &mut SmartTable) {
 }
 
 fn add_columns_to_table<'a>(
-	record_set: &'a sqlite3::RecordSet,
+	record_set: &'a sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
 	table: &mut SmartTable) -> HashMap<&'a String, i32> {
 	let mut col_width_map: HashMap<&'a String, i32> = HashMap::with_capacity(record_set.column_order.len());
 		//add columns
@@ -373,7 +373,7 @@ fn add_columns_to_table<'a>(
 }
 
 fn resize_columns<'a>(
-	record_set:		&'a sqlite3::RecordSet, 
+	record_set:		&'a sqlite3::RecordSet<sqlite::Value, sqlite::Type>, 
 	col_width_map: 	&mut HashMap<&'a String, i32>, 
 	table: 			&mut SmartTable) {
 	
@@ -425,7 +425,7 @@ fn resize_columns<'a>(
 }
 
 fn fill_table(
-	record_set: &mut sqlite3::RecordSet,
+	record_set: &mut sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
 	table:		&mut SmartTable) {
 
 	clear_table(table);
