@@ -31,7 +31,7 @@ use crate::sqlite3_interface as sqlite3;
 //use crate::odbc_interface as odbc;
 use crate::AuxFuncs;
 use rand::{thread_rng, Rng};
-use crate::sql_aux_funcs::{RecordSet, Record};
+use crate::sql_aux_funcs::{RecordSet, Record, SqliteTranslation};
 
 /* <-- Imports */
 /* --> Enums */
@@ -438,24 +438,11 @@ fn fill_table(
 		table.append_empty_row(&current_record_index.to_string()[..]);
 		let mut current_column_index: i32 = 0;
 		for v in &record_set.column_order {
-			match record.columns.get(v).unwrap() {
-				sqlite3::SqliteFloat(value) => {
-					table.set_cell_value(current_record_index, current_column_index, &value.to_string()[..]);
+			match record.columns.get(v) {
+				Some(value) => {
+					table.set_cell_value(current_record_index, current_column_index, &value.translate()[..]);
 				},
-				sqlite3::SqliteInteger(value) => {
-					table.set_cell_value(current_record_index, current_column_index, &value.to_string()[..]);
-				},
-				sqlite3::SqliteString(value) => {
-					table.set_cell_value(current_record_index, current_column_index, &value.to_string()[..]);
-				},
-				sqlite3::SqliteNull => table.set_cell_value(current_record_index, current_column_index, "Null"),
-				sqlite3::SqliteBinary(value) => { 
-					let mut x = String::new();
-					for element in value {
-						x.push_str(&element.to_string()[..])
-					} 
-					table.set_cell_value(current_record_index, current_column_index, &x[..])
-				},
+				None => {},
 			}
 			current_column_index += 1;
 		}

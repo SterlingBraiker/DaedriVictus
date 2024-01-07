@@ -23,11 +23,7 @@ fn main() -> Result<(), sqlite::Error> {
 	Ok(())	
 }
 
-
-
 /* <--  Functions */
-	
-
 
 /* --> Dead Code Examples
 

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use crate::sqlite3_interface::*;
 
 /* --> Structs */
-
+/*
 #[derive(Clone)]
 pub struct RecordSet<T, U> {
 	pub column_info: HashMap<String, U>,
@@ -18,6 +18,16 @@ pub struct RecordSet<T, U> {
 	pub records: Vec<Record<T>>,
 	pub paged_records: Vec<Record<T>>, //consider changing this to a std::slice for performance?
 }
+*/
+
+#[derive(Clone)]
+pub struct RecordSet<'a, T, U> {
+	pub column_info: HashMap<String, U>,
+	pub column_order: Vec<String>,
+	pub records: Vec<Record<T>>,
+	pub paged_records: &'a [T],
+}
+
 
 #[derive(Clone, Default)]
 pub struct Record<T> {
@@ -66,7 +76,7 @@ impl Default for RecordSet<sqlite::Value, sqlite::Type> {
 			column_info: HashMap::<String, sqlite::Type>::new(),
 			column_order: Vec::<String>::new(),
 			records: Vec::<Record<sqlite::Value>>::new(),
-			paged_records: Vec::<Record<sqlite::Value>>::new(),
+			paged_records: &[Self.records[..]],
 		}
 	}
 }
@@ -81,30 +91,29 @@ impl Record<sqlite::Value> {
 /* <-- Structs */
 /* --> Traits */
 
-
 pub trait SqliteTranslation {
 	fn translate(&self) -> String;
 }
-//convert this to `to_string()` and implement a proper `translate` to convert from sqlite::value to native rust values
-//impl SqliteTranslation for sqlite::Value {
+
 impl SqliteTranslation for sqlite::Value {
 	fn translate(&self) -> String {
 		let mut payload: String = String::new();
 		
 		match self {
 			SqliteFloat(value)		=> payload.push_str(&value.to_string()),
-			SqliteInteger(value)	=> payload.push_str(&value.to_string()),
-			SqliteString(value)		=> payload.push_str(&value.to_string()),
-			SqliteNull				=> payload.push_str("Null"),
+			SqliteInteger(value)		=> payload.push_str(&value.to_string()),
+			SqliteString(value)	=> payload.push_str(&value.to_string()),
 			SqliteBinary(value) 	=> { 
 				for element in value {
 					payload.push_str(&element.to_string())
 				} 
 			},
+			SqliteNull	=> payload.push_str("Null"),
 		}
 
 		payload
 	}
 }
+
 
 /* <-- Traits */
