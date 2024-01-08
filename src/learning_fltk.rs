@@ -259,7 +259,7 @@ fn init_gui<'a>() {
 					Ok(value) => {
 						current_record_set = value;
 	
-						current_record_set.paged_records = current_record_set.records.clone();
+						current_record_set.fetch_paged_records(1);
 						fill_table(&mut current_record_set, &mut table_grid);
 						table_grid.set_col_width(0, 155);
 					},
@@ -328,9 +328,9 @@ fn center() -> (i32, i32) {
 
 //setup to handle sqlite3 currently
 
-fn attempt_query(
+fn attempt_query<'a>(
 	textinput: &str) 
-	-> Result<sqlite3::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
+	-> Result<sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type>, sqlite::Error> {
 
 	sqlite3::raw_query(
 		String::from(".\\src\\copy_of_dv.db"), 
@@ -434,11 +434,11 @@ fn fill_table(
 	
 	let mut current_record_index: i32 = 0;
 	//add rows
-	for record in &record_set.paged_records {
+	for record in record_set.paged_records.iter() {
 		table.append_empty_row(&current_record_index.to_string()[..]);
 		let mut current_column_index: i32 = 0;
 		for v in &record_set.column_order {
-			match record.columns.get(v) {
+			match record[0].columns.get(v) {
 				Some(value) => {
 					table.set_cell_value(current_record_index, current_column_index, &value.translate()[..]);
 				},

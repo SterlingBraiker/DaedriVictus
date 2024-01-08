@@ -25,7 +25,7 @@ pub struct RecordSet<'a, T, U> {
 	pub column_info: HashMap<String, U>,
 	pub column_order: Vec<String>,
 	pub records: Vec<Record<T>>,
-	pub paged_records: &'a [T],
+	pub paged_records: Option<&'a [Record<T>]>,
 }
 
 
@@ -34,7 +34,7 @@ pub struct Record<T> {
 	pub columns: HashMap<String, T>,
 }
 
-impl RecordSet<sqlite::Value, sqlite::Type> {
+impl<'a> RecordSet<'a, sqlite::Value, sqlite::Type> {
 	pub fn construct(&mut self, stmt: &mut sqlite::Statement) -> Result<(), sqlite::Error> { 
 		stmt.next()?;
 
@@ -61,22 +61,22 @@ impl RecordSet<sqlite::Value, sqlite::Type> {
 	}
 	
 	pub fn fetch_paged_records(
-	&mut self,
+	&'a mut self,
 	page: usize) {
 		let range_upper: usize = if (page * 50) < self.records.len() { page *  50 } else { self.records.len() };
 		let range_lower: usize = if range_upper > 50 { range_upper - 50 } else { 0 };
-		self.paged_records = self.records[range_lower..range_upper].to_vec();
+		//self.paged_records = self.records[range_lower..range_upper].to_vec();
+		self.paged_records = Some(&self.records[range_lower..range_upper]);
 	}
-	
 }
 
-impl Default for RecordSet<sqlite::Value, sqlite::Type> {
+impl Default for RecordSet<'_, sqlite::Value, sqlite::Type> {
 	fn default() -> Self {
 		Self { 
 			column_info: HashMap::<String, sqlite::Type>::new(),
 			column_order: Vec::<String>::new(),
 			records: Vec::<Record<sqlite::Value>>::new(),
-			paged_records: &[Self.records[..]],
+			paged_records: None,
 		}
 	}
 }
