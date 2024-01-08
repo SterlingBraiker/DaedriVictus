@@ -2,7 +2,7 @@
 
 use std::{
 	collections::HashMap, 
-	sync::mpsc,
+	sync::{mpsc, Arc, Mutex},
 	thread,
 	thread::JoinHandle,
 	thread::Builder};
@@ -39,9 +39,8 @@ use crate::sql_aux_funcs::{RecordSet, Record, SqliteTranslation};
 #[derive(Clone)]
 pub enum Message {
 	Query(String),
-	FillGrid,
+	FillGrid(i32),
 	Save,
-	Tables,
 	ClearGrid,
 	RandomNumber(usize, u64),
 	LaunchObserver,
@@ -171,6 +170,7 @@ fn init_gui<'a>() {
 	query_butn.set_callback({
 		move |_| {
 			query_butn_sndr.send(Message::Query(textinput.value().clone()));
+			query_butn_sndr.send(Message::FillGrid(1));
 	}});
 	
 	clear_butn.set_callback({
@@ -186,13 +186,14 @@ fn init_gui<'a>() {
 
 	tables_butn.set_callback({
 		move |_| {
-			tables_butn_sndr.send(Message::Tables);
+			tables_butn_sndr.send(Message::Query(String::from(TABLES)));
+			tables_butn_sndr.send(Message::FillGrid(2));
 		}
 	});
 
 	pages_butn.set_callback({
 		move |_| {
-			pages_butn_sndr.send(Message::FillGrid);
+			pages_butn_sndr.send(Message::FillGrid(1));
 		}
 	});
 
@@ -228,7 +229,7 @@ fn init_gui<'a>() {
 		f.fltk_windows[0].set_pos(x, y - (760 / 2));
 	}
 
-	let mut current_record_set: sqlite3::RecordSet<sqlite::Value, sqlite::Type> = sqlite3::RecordSet::default();
+	let mut master_record_set: sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type> = sqlite3::RecordSet::default();
 	let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
 	let mut outputs: Vec<MultilineOutput> = Vec::new();
 	
@@ -238,8 +239,8 @@ fn init_gui<'a>() {
 			Some(Message::Query(qry)) => { 
 				match attempt_query(&qry[..]) {
 					Ok(value) => {
-						current_record_set = value;
-						pages_butn.do_callback();
+						master_record_set = value;
+//						pages_butn.do_callback();
 					},
 					Err(E) => println!("failed to submit query: {E:?}"),
 				}
@@ -254,22 +255,17 @@ fn init_gui<'a>() {
 					};
 				};
 			},
-			Some(Message::Tables) => { //requested tables in the db file
-				match attempt_query(TABLES) {
-					Ok(value) => {
-						current_record_set = value;
-	
-						current_record_set.fetch_paged_records(1);
-						fill_table(&mut current_record_set, &mut table_grid);
-						table_grid.set_col_width(0, 155);
-					},
-					Err(E) => println!("Failed to submit query: {E:?}"),			
-				}				
-			},
-			Some(Message::FillGrid) => {
+			Some(Message::FillGrid(table_index)) => {
 				let page_index: usize = page_input.value().parse::<usize>().unwrap();
-				current_record_set.fetch_paged_records(page_index);
-				fill_table(&mut current_record_set, &mut record_grid);
+				let table: &mut SmartTable = match table_index {
+					1 => &mut record_grid,
+					2 => &mut table_grid,
+					_ => &mut record_grid,
+				};
+				match master_record_set.fetch_paged_records(page_index) {
+					Some(sliced_records) => { fill_table(&master_record_set, table, sliced_records) },
+					None => {} ,
+				}
 			},
 			Some(Message::ClearGrid) => {
 				clear_table(&mut record_grid);
@@ -425,8 +421,9 @@ fn resize_columns<'a>(
 }
 
 fn fill_table(
-	record_set: &mut sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
-	table:		&mut SmartTable) {
+	record_set: 	&sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
+	table:			&mut SmartTable,
+	paged_records:	&[Record<sqlite::Value>]) {
 
 	clear_table(table);
 	let mut col_width_map: HashMap<&String, i32> = add_columns_to_table(&record_set, table);
@@ -434,11 +431,11 @@ fn fill_table(
 	
 	let mut current_record_index: i32 = 0;
 	//add rows
-	for record in record_set.paged_records.iter() {
+	for record in paged_records.iter() {
 		table.append_empty_row(&current_record_index.to_string()[..]);
 		let mut current_column_index: i32 = 0;
 		for v in &record_set.column_order {
-			match record[0].columns.get(v) {
+			match record.columns.get(v) {
 				Some(value) => {
 					table.set_cell_value(current_record_index, current_column_index, &value.translate()[..]);
 				},

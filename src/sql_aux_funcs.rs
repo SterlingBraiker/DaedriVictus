@@ -61,12 +61,12 @@ impl<'a> RecordSet<'a, sqlite::Value, sqlite::Type> {
 	}
 	
 	pub fn fetch_paged_records(
-	&'a mut self,
-	page: usize) {
+	&'a self,
+	page: usize) -> Option<&[Record<sqlite::Value>]> {
 		let range_upper: usize = if (page * 50) < self.records.len() { page *  50 } else { self.records.len() };
 		let range_lower: usize = if range_upper > 50 { range_upper - 50 } else { 0 };
 		//self.paged_records = self.records[range_lower..range_upper].to_vec();
-		self.paged_records = Some(&self.records[range_lower..range_upper]);
+		Some(&self.records[range_lower..range_upper])
 	}
 }
 
