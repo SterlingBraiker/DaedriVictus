@@ -73,9 +73,6 @@ pub fn cli_query(db_name: String) -> Result<(), sqlite::Error> {
 		if state_trigger.trim() != confirmation {
 			break
 		}
-
-//		println!("Continuing...", state_trigger.trim(), confirmation);
-		
 	}
 	Ok(())
 }
@@ -132,7 +129,6 @@ fn select_from<'a>(
 				//fetched data from a column
 				Some(value) => { 
 					//'value' is the data in the column
-					//println!("{:?}", value);
 					
 					//add value to the Record object
 					current_row.add(name.clone(), value.clone());

@@ -31,7 +31,12 @@ use crate::sqlite3_interface as sqlite3;
 //use crate::odbc_interface as odbc;
 use crate::AuxFuncs;
 use rand::{thread_rng, Rng};
-use crate::sql_aux_funcs::{RecordSet, Record, SqliteTranslation};
+use crate::sql_aux_funcs::{
+	RecordSet, 
+	Record, 
+	SqliteTranslation, 
+	Connection, 
+	Connectable};
 
 /* <-- Imports */
 /* --> Enums */
@@ -47,23 +52,15 @@ pub enum Message {
 	SqlServerPacket(Option<i32>),
 }
 
-enum ConnectionType {
-	Sqlite3(ConnectionObject),
-	Odbc(ConnectionObject),
-	Undefined,
-}
 /* <-- Enums */
 /* --> Structs */
 
-struct FltkHost {
+struct FltkHost<'a> {
 	fltk_app: App,
 	fltk_windows: Vec<fltk::window::Window>,
-	conn: ConnectionType,
+	conn: Connection<sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type>>,
 }
 
-struct ConnectionObject {
-	db_name: String,
-}
 
 /* -> notes
 
@@ -88,10 +85,13 @@ pub fn entry_point() {
 }
 
 fn init_gui<'a>() {
-	let mut f: FltkHost = FltkHost {
+	let mut f: FltkHost<'a> = FltkHost {
 		fltk_app: App::default().with_scheme(Scheme::Oxy),
 		fltk_windows: Vec::new(),
-		conn: ConnectionType::Undefined,
+		conn: Connection {
+			record_set: sqlite3::RecordSet::default(),
+			connection: Connectable::None,
+		},
 	};
 	
 	// create SQL window
@@ -153,8 +153,6 @@ fn init_gui<'a>() {
 	let mut tables_butn = Button::default().with_size(75, 63).right_of(&textinput, 4).with_label("&Tables");
 	let mut save_butn = Button::default().with_size(75, 63).right_of(&tables_butn, 4).with_label("Sa&ve");
 	let mut observer_butn = Button::default().with_size(75, 63).right_of(&save_butn, 4).with_label("Observe");
-
-	//let _: i32 = main_menu.add("Connect", None, 
 
 	//create channels 
 	let (main_app_sender,
@@ -229,7 +227,6 @@ fn init_gui<'a>() {
 		f.fltk_windows[0].set_pos(x, y - (760 / 2));
 	}
 
-	let mut master_record_set: sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type> = sqlite3::RecordSet::default();
 	let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
 	let mut outputs: Vec<MultilineOutput> = Vec::new();
 	
@@ -239,8 +236,7 @@ fn init_gui<'a>() {
 			Some(Message::Query(qry)) => { 
 				match attempt_query(&qry[..]) {
 					Ok(value) => {
-						master_record_set = value;
-//						pages_butn.do_callback();
+						f.conn.record_set = value;
 					},
 					Err(E) => println!("failed to submit query: {E:?}"),
 				}
@@ -262,8 +258,8 @@ fn init_gui<'a>() {
 					2 => &mut table_grid,
 					_ => &mut record_grid,
 				};
-				match master_record_set.fetch_paged_records(page_index) {
-					Some(sliced_records) => { fill_table(&master_record_set, table, sliced_records) },
+				match f.conn.record_set.fetch_paged_records(page_index) {
+					Some(sliced_records) => { fill_table(&f.conn.record_set, table, sliced_records) },
 					None => {} ,
 				}
 			},
@@ -278,8 +274,8 @@ fn init_gui<'a>() {
 			},
 			Some(Message::SqlServerPacket(packet)) => {
 				match packet {
-					Some(0) => { f.conn = ConnectionType::Sqlite3(ConnectionObject { db_name: String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")}); println!("sqlite selected"); },
-					Some(1) => { f.conn = ConnectionType::Odbc(ConnectionObject { db_name: String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")}); println!("odbc selected"); },
+					Some(0) => { f.conn.connection = Connectable::Sqlite3(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("sqlite selected"); },
+					Some(1) => { f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("odbc selected"); },
 					_ => (),
 				}
 			},

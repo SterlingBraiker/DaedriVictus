@@ -10,15 +10,11 @@ use std::collections::HashMap;
 use crate::sqlite3_interface::*;
 
 /* --> Structs */
-/*
-#[derive(Clone)]
-pub struct RecordSet<T, U> {
-	pub column_info: HashMap<String, U>,
-	pub column_order: Vec<String>,
-	pub records: Vec<Record<T>>,
-	pub paged_records: Vec<Record<T>>, //consider changing this to a std::slice for performance?
+
+pub struct Connection<T> {
+	pub record_set: T,
+	pub connection: Connectable,
 }
-*/
 
 #[derive(Clone)]
 pub struct RecordSet<'a, T, U> {
@@ -28,10 +24,15 @@ pub struct RecordSet<'a, T, U> {
 	pub paged_records: Option<&'a [Record<T>]>,
 }
 
-
 #[derive(Clone, Default)]
 pub struct Record<T> {
 	pub columns: HashMap<String, T>,
+}
+
+pub enum Connectable {
+	Sqlite3(String),
+	Odbc(String),
+	None,
 }
 
 impl<'a> RecordSet<'a, sqlite::Value, sqlite::Type> {
@@ -65,7 +66,6 @@ impl<'a> RecordSet<'a, sqlite::Value, sqlite::Type> {
 	page: usize) -> Option<&[Record<sqlite::Value>]> {
 		let range_upper: usize = if (page * 50) < self.records.len() { page *  50 } else { self.records.len() };
 		let range_lower: usize = if range_upper > 50 { range_upper - 50 } else { 0 };
-		//self.paged_records = self.records[range_lower..range_upper].to_vec();
 		Some(&self.records[range_lower..range_upper])
 	}
 }
