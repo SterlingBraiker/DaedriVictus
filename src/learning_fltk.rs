@@ -274,7 +274,7 @@ fn init_gui<'a>() {
 			},
 			Some(Message::SqlServerPacket(packet)) => {
 				match packet {
-					Some(0) => { f.conn.connection = Connectable::Sqlite3(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("sqlite selected"); },
+					Some(0) => { f.conn.connection = Connectable::Sqlite3(String::from("./copy_of_dv.db")); println!("sqlite selected"); },
 					Some(1) => { f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("odbc selected"); },
 					_ => (),
 				}
