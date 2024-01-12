@@ -29,6 +29,7 @@ pub struct Record<T> {
 	pub columns: HashMap<String, T>,
 }
 
+#[derive(Debug)]
 pub enum Connectable {
 	Sqlite3(String),
 	Odbc(String),

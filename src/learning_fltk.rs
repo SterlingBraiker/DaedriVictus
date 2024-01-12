@@ -36,7 +36,8 @@ use crate::sql_aux_funcs::{
 	Record, 
 	SqliteTranslation, 
 	Connection, 
-	Connectable};
+	Connectable,
+	Connectable::{Sqlite3, Odbc}};
 
 /* <-- Imports */
 /* --> Enums */
@@ -233,8 +234,13 @@ fn init_gui<'a>() {
 	// enter the event loop which responds to channel messages
 	while f.fltk_app.wait() {
 		match main_app_receiver.recv() {
-			Some(Message::Query(qry)) => { 
-				match attempt_query(&qry[..]) {
+			Some(Message::Query(qry)) => {
+				let db_name = match f.conn.connection { 
+					Sqlite3(ref s) => s.clone(),
+					Odbc(ref s) => s.clone(),
+					_ => String::from("none"),
+				};
+				match attempt_query(&qry[..], &db_name[..]) {
 					Ok(value) => {
 						f.conn.record_set = value;
 					},
@@ -274,7 +280,11 @@ fn init_gui<'a>() {
 			},
 			Some(Message::SqlServerPacket(packet)) => {
 				match packet {
-					Some(0) => { f.conn.connection = Connectable::Sqlite3(String::from("./copy_of_dv.db")); println!("sqlite selected"); },
+//					Some(0) => { f.conn.connection = Connectable::Sqlite3(String::from("./copy_of_dv.db")); println!("sqlite selected"); },
+						Some(0) => { 
+							f.conn.connection = Connectable::Sqlite3(String::from("copy_of_dv.db")); 
+							println!("{:?}", f.conn.connection); 
+						},
 					Some(1) => { f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("odbc selected"); },
 					_ => (),
 				}
@@ -321,11 +331,12 @@ fn center() -> (i32, i32) {
 //setup to handle sqlite3 currently
 
 fn attempt_query<'a>(
-	textinput: &str) 
+	textinput: &str,
+	db_name: &str) 
 	-> Result<sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type>, sqlite::Error> {
 
 	sqlite3::raw_query(
-		String::from(".\\src\\copy_of_dv.db"), 
+		String::from(db_name), 
 		String::from(textinput))
 }
 
