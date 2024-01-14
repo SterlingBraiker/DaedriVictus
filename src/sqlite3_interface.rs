@@ -23,7 +23,8 @@ pub use crate::sql_aux_funcs::{RecordSet, Record};
 /* <-- Enums */
 /* --> Functions */
 
-pub fn raw_query<'a>(db_name: String, query: String) -> Result<RecordSet<'a, sqlite::Value, sqlite::Type>, sqlite::Error> {
+pub fn raw_query(db_name: String, query: String) -> Result<RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
+	//let db_handle = sqlite::open(&db_name)?;
 	let db_handle = sqlite::open(&db_name)?;
 
 	//do I need to trim the query here? Is this always a safe practice?
@@ -96,21 +97,20 @@ fn build_db(db_handle: &sqlite::Connection) -> Result<(), sqlite::Error> {
 	Ok(())
 }
 
-fn select_from<'a>(
+fn select_from(
 	db_handle: &sqlite::Connection,
 	query: &str) -> 
 	Result<
-		RecordSet<'a, sqlite::Value, sqlite::Type>,
+		RecordSet<sqlite::Value, sqlite::Type>,
 		sqlite::Error> {
 	let mut stmt = db_handle.prepare(query)?;
 	//bind parameters function call here
 	
 	//construct recordset meta data
-	let mut record_set: RecordSet<'a, sqlite::Value, sqlite::Type> = RecordSet { 
+	let mut record_set: RecordSet<sqlite::Value, sqlite::Type> = RecordSet { 
 		column_info: HashMap::new(),
 		column_order: Vec::new(),
 		records: Vec::new(),
-		paged_records: None,
 	};
 	record_set.construct(&mut stmt)?;
 	

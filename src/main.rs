@@ -19,7 +19,6 @@ mod sql_aux_funcs;
 fn main() -> Result<(), sqlite::Error> {
 
 	learning_fltk::entry_point();
-	//odbc_interface::entry_point();
 	Ok(())	
 }
 
