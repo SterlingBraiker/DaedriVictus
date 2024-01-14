@@ -92,6 +92,8 @@ fn init_gui<'a>() {
 		conn: Connection {
 			record_set: sqlite3::RecordSet::default(),
 			connection: Connectable::None,
+			result_code: 0,
+			result_details: None,
 		},
 	};
 	
@@ -242,8 +244,13 @@ fn init_gui<'a>() {
 				match attempt_query(&qry[..], &db_name[..]) {
 					Ok(value) => {
 						f.conn.record_set = value;
+						f.conn.result_code = 1;
 					},
-					Err(E) => println!("failed to submit query: {E:?}"),
+					Err(E) => {
+						println!("failed to submit query: {E:?}");
+						f.conn.result_code = -1;
+						f.conn.result_details = E.message;
+					},
 				}
 			},
 			Some(Message::Save) => { //received a save request from qry_butn
@@ -257,15 +264,29 @@ fn init_gui<'a>() {
 				};
 			},
 			Some(Message::FillGrid(table_index)) => {
-				let page_index: usize = page_input.value().parse::<usize>().unwrap();
-				let table: &mut SmartTable = match table_index {
-					1 => &mut record_grid,
-					2 => &mut table_grid,
-					_ => &mut record_grid,
-				};
+				if f.conn.result_code == -1 {	//check that the query didn't error out
+					match f.conn.result_details {
+						Some(details) => println!("{}", details),
+						None => println!("Empty error message"),
+					}
+					f.conn.result_code = 0;
+					f.conn.result_details = None;
+				}
+
+				//then fill the grid with the recordset because it passed
+				if f.conn.result_code == 1 {
+					let page_index: usize = page_input.value().parse::<usize>().unwrap();
+					let table: &mut SmartTable = match table_index {
+						1 => &mut record_grid,
+						2 => &mut table_grid,
+						_ => &mut record_grid,
+					};
 				
-				let page_of_records: Vec<Record<sqlite::Value>> = f.conn.record_set.fetch_page_of_records(page_index);	
-				fill_table(&f.conn.record_set, table, page_of_records);
+				//slice the recordset into a single page
+				//fill the grid with only <= 50 records
+					let page_of_records: Vec<Record<sqlite::Value>> = f.conn.record_set.fetch_page_of_records(page_index);	
+					fill_table(&f.conn.record_set, table, page_of_records);
+				}
 			},
 			Some(Message::ClearGrid) => {
 				clear_table(&mut record_grid);
@@ -284,6 +305,7 @@ fn init_gui<'a>() {
 					Some(1) => { f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("odbc selected"); },
 					_ => (),
 				}
+				if f.conn.connection != Connectable::None { tables_butn.do_callback(); }
 			},
 			None => {},
 		}

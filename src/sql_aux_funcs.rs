@@ -14,6 +14,8 @@ use crate::sqlite3_interface::*;
 pub struct Connection<T> {
 	pub record_set: T,
 	pub connection: Connectable,
+	pub result_code: i32,
+	pub result_details: Option<String>,
 }
 
 #[derive(Clone)]
@@ -28,7 +30,7 @@ pub struct Record<T> {
 	pub columns: HashMap<String, T>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Connectable {
 	Sqlite3(String),
 	Odbc(String),
