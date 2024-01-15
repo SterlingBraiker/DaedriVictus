@@ -56,10 +56,10 @@ pub enum Message {
 /* <-- Enums */
 /* --> Structs */
 
-struct FltkHost<'a> {
+struct FltkHost {
 	fltk_app: App,
 	fltk_windows: Vec<fltk::window::Window>,
-	conn: Connection<sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type>>,
+	conn: Connection<sqlite3::RecordSet<sqlite::Value, sqlite::Type>>,
 }
 
 
@@ -86,12 +86,14 @@ pub fn entry_point() {
 }
 
 fn init_gui<'a>() {
-	let mut f: FltkHost<'a> = FltkHost {
+	let mut f: FltkHost = FltkHost {
 		fltk_app: App::default().with_scheme(Scheme::Oxy),
 		fltk_windows: Vec::new(),
 		conn: Connection {
 			record_set: sqlite3::RecordSet::default(),
 			connection: Connectable::None,
+			result_code: 0,
+			result_details: None,
 		},
 	};
 	
@@ -220,7 +222,6 @@ fn init_gui<'a>() {
 	f.fltk_windows[0].end();
 	f.fltk_windows[0].show();
 
-
 	{	
 		let children_bounds = resize_window_to_children(f.fltk_windows[0].bounds());
 		f.fltk_windows[0].resize(children_bounds.0, children_bounds.1, children_bounds.2, children_bounds.3);
@@ -243,8 +244,13 @@ fn init_gui<'a>() {
 				match attempt_query(&qry[..], &db_name[..]) {
 					Ok(value) => {
 						f.conn.record_set = value;
+						f.conn.result_code = 1;
 					},
-					Err(E) => println!("failed to submit query: {E:?}"),
+					Err(E) => {
+						println!("failed to submit query: {E:?}");
+						f.conn.result_code = -1;
+						f.conn.result_details = E.message;
+					},
 				}
 			},
 			Some(Message::Save) => { //received a save request from qry_butn
@@ -258,15 +264,28 @@ fn init_gui<'a>() {
 				};
 			},
 			Some(Message::FillGrid(table_index)) => {
-				let page_index: usize = page_input.value().parse::<usize>().unwrap();
-				let table: &mut SmartTable = match table_index {
-					1 => &mut record_grid,
-					2 => &mut table_grid,
-					_ => &mut record_grid,
-				};
-				match f.conn.record_set.fetch_paged_records(page_index) {
-					Some(sliced_records) => { fill_table(&f.conn.record_set, table, sliced_records) },
-					None => {} ,
+				if f.conn.result_code == -1 {	//check that the query didn't error out
+					match f.conn.result_details {
+						Some(details) => println!("{}", details),
+						None => println!("Empty error message"),
+					}
+					f.conn.result_code = 0;
+					f.conn.result_details = None;
+				}
+
+				//then fill the grid with the recordset because it passed
+				if f.conn.result_code == 1 {
+					let page_index: usize = page_input.value().parse::<usize>().unwrap();
+					let table: &mut SmartTable = match table_index {
+						1 => &mut record_grid,
+						2 => &mut table_grid,
+						_ => &mut record_grid,
+					};
+				
+				//slice the recordset into a single page
+				//fill the grid with only <= 50 records
+					let page_of_records: Vec<Record<sqlite::Value>> = f.conn.record_set.fetch_page_of_records(page_index);	
+					fill_table(&f.conn.record_set, table, page_of_records);
 				}
 			},
 			Some(Message::ClearGrid) => {
@@ -280,14 +299,13 @@ fn init_gui<'a>() {
 			},
 			Some(Message::SqlServerPacket(packet)) => {
 				match packet {
-//					Some(0) => { f.conn.connection = Connectable::Sqlite3(String::from("./copy_of_dv.db")); println!("sqlite selected"); },
-						Some(0) => { 
-							f.conn.connection = Connectable::Sqlite3(String::from("copy_of_dv.db")); 
-							println!("{:?}", f.conn.connection); 
-						},
+					Some(0) => { 
+						f.conn.connection = Connectable::Sqlite3(String::from("copy_of_dv.db"));
+					},
 					Some(1) => { f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db")); println!("odbc selected"); },
 					_ => (),
 				}
+				if f.conn.connection != Connectable::None { tables_butn.do_callback(); }
 			},
 			None => {},
 		}
@@ -330,10 +348,10 @@ fn center() -> (i32, i32) {
 
 //setup to handle sqlite3 currently
 
-fn attempt_query<'a>(
+fn attempt_query(
 	textinput: &str,
 	db_name: &str) 
-	-> Result<sqlite3::RecordSet<'a, sqlite::Value, sqlite::Type>, sqlite::Error> {
+	-> Result<sqlite3::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
 
 	sqlite3::raw_query(
 		String::from(db_name), 
@@ -361,7 +379,8 @@ fn clear_table(table: &mut SmartTable) {
 
 fn add_columns_to_table<'a>(
 	record_set: &'a sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
-	table: &mut SmartTable) -> HashMap<&'a String, i32> {
+	table: &mut SmartTable) 
+	-> HashMap<&'a String, i32> {
 	let mut col_width_map: HashMap<&'a String, i32> = HashMap::with_capacity(record_set.column_order.len());
 		//add columns
 	let mut current_column_index: i32 = 0;
@@ -430,7 +449,7 @@ fn resize_columns<'a>(
 fn fill_table(
 	record_set: 	&sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
 	table:			&mut SmartTable,
-	paged_records:	&[Record<sqlite::Value>]) {
+	paged_records:	Vec<Record<sqlite::Value>>) {
 
 	clear_table(table);
 	let mut col_width_map: HashMap<&String, i32> = add_columns_to_table(&record_set, table);

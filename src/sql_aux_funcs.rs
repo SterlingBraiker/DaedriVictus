@@ -14,14 +14,15 @@ use crate::sqlite3_interface::*;
 pub struct Connection<T> {
 	pub record_set: T,
 	pub connection: Connectable,
+	pub result_code: i32,
+	pub result_details: Option<String>,
 }
 
 #[derive(Clone)]
-pub struct RecordSet<'a, T, U> {
+pub struct RecordSet<T, U> {
 	pub column_info: HashMap<String, U>,
 	pub column_order: Vec<String>,
 	pub records: Vec<Record<T>>,
-	pub paged_records: Option<&'a [Record<T>]>,
 }
 
 #[derive(Clone, Default)]
@@ -29,14 +30,14 @@ pub struct Record<T> {
 	pub columns: HashMap<String, T>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Connectable {
 	Sqlite3(String),
 	Odbc(String),
 	None,
 }
 
-impl<'a> RecordSet<'a, sqlite::Value, sqlite::Type> {
+impl RecordSet<sqlite::Value, sqlite::Type> {
 	pub fn construct(&mut self, stmt: &mut sqlite::Statement) -> Result<(), sqlite::Error> { 
 		stmt.next()?;
 
@@ -62,22 +63,21 @@ impl<'a> RecordSet<'a, sqlite::Value, sqlite::Type> {
 		self.records.first().unwrap().columns.len()
 	}
 	
-	pub fn fetch_paged_records(
-	&'a self,
-	page: usize) -> Option<&[Record<sqlite::Value>]> {
+	pub fn fetch_page_of_records(
+	&self,
+	page: usize) -> Vec<Record<sqlite::Value>> {
 		let range_upper: usize = if (page * 50) < self.records.len() { page *  50 } else { self.records.len() };
 		let range_lower: usize = if range_upper > 50 { range_upper - 50 } else { 0 };
-		Some(&self.records[range_lower..range_upper])
+		Vec::from(&self.records[range_lower..range_upper])
 	}
 }
 
-impl Default for RecordSet<'_, sqlite::Value, sqlite::Type> {
+impl Default for RecordSet<sqlite::Value, sqlite::Type> {
 	fn default() -> Self {
 		Self { 
 			column_info: HashMap::<String, sqlite::Type>::new(),
 			column_order: Vec::<String>::new(),
 			records: Vec::<Record<sqlite::Value>>::new(),
-			paged_records: None,
 		}
 	}
 }
