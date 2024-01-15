@@ -7,12 +7,13 @@
 /* <-- directives */
 /* --> imports */
 
-mod sqlite3_interface;
-//mod odbc_interface;
 mod AuxFuncs;
 mod fltk_messages;
 mod learning_fltk;
+mod odbc_interface;
 mod sql_aux_funcs;
+mod sqlite3_interface;
+
 /* <--  imports */
 /* -->  Functions */
 

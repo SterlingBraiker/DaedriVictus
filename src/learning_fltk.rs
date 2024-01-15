@@ -17,17 +17,18 @@ use fltk::{
     input::{Input, MultilineInput},
     menu::{MenuBar, MenuFlag, MenuItem},
     output::MultilineOutput,
-    prelude::{GroupExt, InputExt, MenuExt, WidgetBase, WidgetExt},
+    prelude::{GroupExt, InputExt, MenuExt, WidgetBase, WidgetExt, WindowExt},
     window,
 };
 
 use crate::sqlite3_interface as sqlite3;
+use crate::odbc_interface::*;
 use fltk_table::{SmartTable, TableOpts};
-//use crate::odbc_interface as odbc;
+
 use crate::sql_aux_funcs::{
     Connectable,
     Connectable::{Odbc, Sqlite3},
-    Connection, Record, RecordSet, SqliteTranslation,
+    Connection, Record, RecordSet, Translate,
 };
 use crate::AuxFuncs;
 use rand::{thread_rng, Rng};
@@ -52,7 +53,7 @@ pub enum Message {
 struct FltkHost {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
-    conn: Connection<sqlite3::RecordSet<sqlite::Value, sqlite::Type>>,
+    conn: Connection<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>>,
 }
 
 /* -> notes
@@ -79,11 +80,13 @@ pub fn entry_point() {
 }
 
 fn init_gui<'a>() {
+    //testing file input dialogs
+    
     let mut f: FltkHost = FltkHost {
         fltk_app: App::default().with_scheme(Scheme::Oxy),
         fltk_windows: Vec::new(),
         conn: Connection {
-            record_set: sqlite3::RecordSet::default(),
+            record_set: crate::sql_aux_funcs::RecordSet::default(),
             connection: Connectable::None,
             result_code: 0,
             result_details: None,
@@ -92,7 +95,7 @@ fn init_gui<'a>() {
 
     // create SQL window
     // Create controls
-    let sql_window = window::Window::default().with_size(1280, 760);
+    let sql_window = window::Window::default().with_size(1280, 760).center_screen();
     f.fltk_windows.push(sql_window);
 
     let mut main_menu: MenuBar = MenuBar::default().with_size(1280, 30).with_pos(0, 0);
@@ -242,8 +245,9 @@ fn init_gui<'a>() {
             children_bounds.2,
             children_bounds.3,
         );
-        let (x, y): (i32, i32) = center();
-        f.fltk_windows[0].set_pos(x, y - (760 / 2));
+        //refactored to use *.center_screen()
+//        let (x, y): (i32, i32) = center();
+//        f.fltk_windows[0].set_pos(x, y - (760 / 2));
     }
 
     let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
@@ -260,13 +264,11 @@ fn init_gui<'a>() {
                 };
                 match attempt_query(&qry[..], &db_name[..]) {
                     Ok(value) => {
-                        f.conn.record_set = value;
-                        f.conn.result_code = 1;
+                        f.conn.assemble_rs(value);
                     }
                     Err(E) => {
                         println!("failed to submit query: {E:?}");
-                        f.conn.result_code = -1;
-                        f.conn.result_details = E.message;
+                        f.conn.assemble_err(E);
                     }
                 }
             }
@@ -322,14 +324,19 @@ fn init_gui<'a>() {
                 spawn_observer(&mut f, &mut outputs, &mut workers, main_app_sender.clone());
             }
             Some(Message::SqlServerPacket(packet)) => {
+                
                 match packet {
                     Some(0) => {
-                        f.conn.connection = Connectable::Sqlite3(String::from("copy_of_dv.db"));
-                    }
+//                        f.conn.connection = Connectable::Sqlite3(String::from("copy_of_dv.db"));
+                        match select_file(&f) {
+                            Ok(selected_file) => f.conn.connection = Connectable::Sqlite3(selected_file),
+                            Err(E) => println!("Invalid operation during file selection, {E:?}"),
+                        }
+                    },
                     Some(1) => {
                         f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db"));
                         println!("odbc selected");
-                    }
+                    },
                     _ => (),
                 }
                 if f.conn.connection != Connectable::None {
@@ -380,7 +387,7 @@ fn center() -> (i32, i32) {
 fn attempt_query(
     textinput: &str,
     db_name: &str,
-) -> Result<sqlite3::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
+) -> Result<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
     sqlite3::raw_query(String::from(db_name), String::from(textinput))
 }
 
@@ -402,7 +409,7 @@ fn clear_table(table: &mut SmartTable) {
 }
 
 fn add_columns_to_table<'a>(
-    record_set: &'a sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
+    record_set: &'a crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>,
     table: &mut SmartTable,
 ) -> HashMap<&'a String, i32> {
     let mut col_width_map: HashMap<&'a String, i32> =
@@ -420,7 +427,7 @@ fn add_columns_to_table<'a>(
 }
 
 fn resize_columns<'a>(
-    record_set: &'a sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
+    record_set: &'a crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>,
     col_width_map: &mut HashMap<&'a String, i32>,
     table: &mut SmartTable,
 ) {
@@ -484,7 +491,7 @@ fn resize_columns<'a>(
 }
 
 fn fill_table(
-    record_set: &sqlite3::RecordSet<sqlite::Value, sqlite::Type>,
+    record_set: &crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>,
     table: &mut SmartTable,
     paged_records: Vec<Record<sqlite::Value>>,
 ) {
@@ -518,7 +525,7 @@ fn resize_window_to_children<T>(bounds: Vec<(T, T, T, T)>) -> (T, T, T, T)
 where
     T: std::cmp::PartialOrd + std::default::Default,
 {
-    let mut boundary = (T::default(), T::default(), T::default(), T::default());
+    let mut boundary: (T, T, T, T) = ( T::default(), T::default(), T::default(), T::default() );
 
     for current_boundary in bounds {
         if boundary.0 > current_boundary.0 {
@@ -536,18 +543,6 @@ where
     }
 
     boundary
-}
-
-pub fn compare_i32(list: &[i32]) -> &i32 {
-    let mut largest = &list[0];
-
-    for item in list {
-        if item > largest {
-            largest = item;
-        }
-    }
-
-    largest
 }
 
 fn spawn_observer(
@@ -612,6 +607,23 @@ fn spawn_observer(
 
     f.fltk_windows[1].end();
     f.fltk_windows[1].show();
+}
+
+fn select_file(f: &FltkHost) -> Result<String, std::io::Error> {
+    let mut fi = dialog::FileChooser::new(
+        ".",
+        "*.db",
+        dialog::FileChooserType::Single,
+        "Select a DB",
+    );
+    let center_of_screen: (i32, i32) = center();
+    fi.show();
+    fi.window().set_pos(center_of_screen.0, center_of_screen.1);
+    while fi.shown() {
+        f.fltk_app.wait();
+    }
+
+    Ok(fi.value(1).unwrap())
 }
 
 /* <-- Functions */

@@ -1,7 +1,7 @@
 /* --> Imports */
 
-use crate::sql_aux_funcs::SqliteTranslation;
-pub use crate::sql_aux_funcs::{Record, RecordSet};
+use crate::sql_aux_funcs::Translate;
+use crate::sql_aux_funcs::{Record, RecordSet};
 pub use sqlite::{
     Bindable, BindableWithIndex, Connection, State, Statement, Type,
     Value::{
@@ -23,10 +23,10 @@ pub fn raw_query(
     db_name: String,
     query: String,
 ) -> Result<RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
-    //let db_handle = sqlite::open(&db_name)?;
     let db_handle = sqlite::open(&db_name)?;
 
     //do I need to trim the query here? Is this always a safe practice?
+    // will most sql engines trim query strings by default anyway?
     let result = select_from(&db_handle, query.trim())?;
 
     Ok(result)

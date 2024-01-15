@@ -6,6 +6,8 @@
 
 */
 
+use crate::odbc_interface;
+use odbc::*;
 use crate::sqlite3_interface::*;
 use std::collections::HashMap;
 
@@ -38,7 +40,7 @@ pub enum Connectable {
 }
 
 impl RecordSet<sqlite::Value, sqlite::Type> {
-    pub fn construct(&mut self, stmt: &mut sqlite::Statement) -> Result<(), sqlite::Error> {
+    pub fn construct(&mut self, stmt: &mut sqlite::Statement) -> std::result::Result<(), sqlite::Error> {
         stmt.next()?;
 
         for name in stmt.column_names() {
@@ -94,14 +96,40 @@ impl Record<sqlite::Value> {
     }
 }
 
+//odbc impl
+impl Connection<RecordSet<String, odbc::ffi::SqlDataType>> {
+    pub fn assemble_rs(&mut self, donor_rs: RecordSet<String, odbc::ffi::SqlDataType>) {
+        self.record_set = donor_rs;
+        self.result_code = 1;
+    }
+
+    pub fn assemble_err(&mut self, e_msg: DiagnosticRecord) {
+        self.result_code = -1;
+        self.result_details = Some(String::from_utf8(e_msg.get_raw_message().to_owned()).unwrap());
+    }
+}
+
+//sqlite impl
+impl Connection<RecordSet<sqlite::Value, sqlite::Type>> {
+    pub fn assemble_rs(&mut self, donor_rs: RecordSet<sqlite::Value, sqlite::Type>) {
+        self.record_set = donor_rs;
+        self.result_code = 1;
+    }
+
+    pub fn assemble_err(&mut self, E: sqlite::Error) {
+        self.result_code = -1;
+        self.result_details = E.message;
+    }
+}
+
 /* <-- Structs */
 /* --> Traits */
 
-pub trait SqliteTranslation {
+pub trait Translate {
     fn translate(&self) -> String;
 }
 
-impl SqliteTranslation for sqlite::Value {
+impl Translate for sqlite::Value {
     fn translate(&self) -> String {
         let mut payload: String = String::new();
 
@@ -120,5 +148,11 @@ impl SqliteTranslation for sqlite::Value {
         payload
     }
 }
+/*
+impl Translate for odbc_interface::odbc::OdbcType {
+    fn translate(&self) -> String {
 
+    }
+}
+ */
 /* <-- Traits */

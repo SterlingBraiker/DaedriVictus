@@ -46,3 +46,15 @@ pub fn translateStringVecToCSV(aVEC: &Vec<Vec<String>>) -> String {
 pub fn last_char_of_first_line(text: &str) -> Option<char> {
     text.lines().next()?.chars().last()
 }
+
+pub fn compare_i32(list: &[i32]) -> &i32 {
+    let mut largest = &list[0];
+
+    for item in list {
+        if item > largest {
+            largest = item;
+        }
+    }
+
+    largest
+}
