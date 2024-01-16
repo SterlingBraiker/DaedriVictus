@@ -327,14 +327,13 @@ fn init_gui<'a>() {
                 
                 match packet {
                     Some(0) => {
-//                        f.conn.connection = Connectable::Sqlite3(String::from("copy_of_dv.db"));
                         match select_file(&f) {
                             Ok(selected_file) => f.conn.connection = Connectable::Sqlite3(selected_file),
                             Err(E) => println!("Invalid operation during file selection, {E:?}"),
                         }
                     },
                     Some(1) => {
-                        f.conn.connection = Connectable::Odbc(String::from("C:\\Users\\goomb\\OneDrive - MRP Solutions\\Rust Dev\\DaedriVictus\\src\\copy_of_dv.db"));
+                        f.conn.connection = Connectable::Odbc(String::from(""));
                         println!("odbc selected");
                     },
                     _ => (),

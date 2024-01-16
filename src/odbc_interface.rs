@@ -5,9 +5,10 @@ pub use odbc::{
 };
 use std::io;
 
-pub fn entry_point() {
+pub fn entry_point() -> String {
     let mut recordset: Vec<Vec<String>> = Vec::new();
-
+    let mut payload: String = String::new();
+    
     match connect(
         &mut recordset,
         String::from("DSN=odbc2;"),
@@ -16,11 +17,9 @@ pub fn entry_point() {
         Ok(()) => println!("Success"),
         Err(diag) => {
             println!("Error: {}", diag);
-            return;
+            payload.push_str("null");
         }
     }
-
-    let mut payload: String = String::new();
 
     for ROW in recordset {
         for CELL in &ROW {
@@ -31,13 +30,15 @@ pub fn entry_point() {
         }
         payload.push_str("\n");
     }
-
+/*
     let mut clipctx = ClipboardContext::new().unwrap();
 
     match clipctx.set_contents(payload) {
         Ok(_) => println!("Success"),
         Err(_) => println!("Fail"),
     }
+*/
+    payload
 }
 
 pub fn connect(
