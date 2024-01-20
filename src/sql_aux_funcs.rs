@@ -90,9 +90,68 @@ impl Default for RecordSet<sqlite::Value, sqlite::Type> {
     }
 }
 
-impl Record<sqlite::Value> {
-    pub fn add(&mut self, key: String, val: sqlite::Value) {
+impl RecordSet<String, odbc::ffi::SqlDataType> {
+    pub fn construct(&mut self, stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>) -> std::result::Result<(), odbc::DiagnosticRecord> {
+
+        for col_index in 1..stmt.num_result_cols()? {
+            let col_description: ColumnDescriptor = stmt.describe_col(col_index as u16)?;
+            self.column_info.insert(
+                String::from(col_description.name.clone()),
+                col_description.data_type,
+            );
+            self.column_order.push(String::from(col_description.name.clone()));
+        };
+        Ok(())
+    } //fill fields 'column_count', 'column_info'
+
+    pub fn add(&mut self, rec: Record<String>) {
+        self.records.push(rec);
+    } //insert a record into the recordset
+
+    pub fn record_count(&self) -> usize {
+        self.records.len()
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.records.first().unwrap().columns.len()
+    }
+
+    pub fn fetch_page_of_records(&self, page: usize) -> Vec<Record<String>> {
+        let range_upper: usize = if (page * 50) < self.records.len() {
+            page * 50
+        } else {
+            self.records.len()
+        };
+        let range_lower: usize = if range_upper > 50 {
+            range_upper - 50
+        } else {
+            0
+        };
+        Vec::from(&self.records[range_lower..range_upper])
+    }
+}
+
+impl Default for RecordSet<String, odbc::ffi::SqlDataType> {
+    fn default() -> Self {
+        Self {
+            column_info: HashMap::<String, odbc::ffi::SqlDataType>::new(),
+            column_order: Vec::<String>::new(),
+            records: Vec::<Record<String>>::new(),
+        }
+    }
+}
+
+impl<T> Record<T> {
+    pub fn add(&mut self, key: String, val: T) {
         self.columns.insert(key, val);
+    }
+}
+
+impl Record<String> {
+    pub fn construct(&mut self, columns: &HashMap<String, odbc::ffi::SqlDataType>) {
+        for key in columns.keys() {
+            self.columns.insert(key.clone(), String::new());
+        }
     }
 }
 
@@ -148,6 +207,13 @@ impl Translate for sqlite::Value {
         payload
     }
 }
+
+impl Translate for String {
+    fn translate(&self) -> String {
+        self.clone()
+    }
+}
+
 /*
 impl Translate for odbc_interface::odbc::OdbcType {
     fn translate(&self) -> String {

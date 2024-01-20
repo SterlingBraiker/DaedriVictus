@@ -333,7 +333,8 @@ fn init_gui<'a>() {
                         }
                     },
                     Some(1) => {
-                        f.conn.connection = Connectable::Odbc(String::from(""));
+                        let conn_str: String = input_conn_str();
+                        f.conn.connection = Connectable::Odbc(conn_str);
                         println!("odbc selected");
                     },
                     _ => (),
@@ -623,6 +624,11 @@ fn select_file(f: &FltkHost) -> Result<String, std::io::Error> {
     }
 
     Ok(fi.value(1).unwrap())
+}
+
+fn input_conn_str() -> String {
+    let input: Input = Input::new(15, 15, 300, 200, "Enter a connection string");
+    input.value()
 }
 
 /* <-- Functions */

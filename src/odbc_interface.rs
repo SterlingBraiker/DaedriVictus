@@ -1,13 +1,19 @@
-use clipboard::{ClipboardContext, ClipboardProvider};
+use crate::sql_aux_funcs::Translate;
+use crate::sql_aux_funcs::{Record, RecordSet};
+use odbc::ColumnDescriptor;
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, NoData,
     OdbcType, Statement,
 };
 use std::io;
+use std::collections::HashMap;
 
-pub fn entry_point() -> String {
-    let mut recordset: Vec<Vec<String>> = Vec::new();
-    let mut payload: String = String::new();
+pub fn entry_point() -> RecordSet<String, odbc::ffi::SqlDataType> {
+    let mut recordset: RecordSet<String, odbc::ffi::SqlDataType> = RecordSet {
+        column_info: HashMap::new(),
+        column_order: Vec::new(),
+        records: Vec::new(),
+    };
     
     match connect(
         &mut recordset,
@@ -15,12 +21,9 @@ pub fn entry_point() -> String {
         String::from("select * from results.csv;"),
     ) {
         Ok(()) => println!("Success"),
-        Err(diag) => {
-            println!("Error: {}", diag);
-            payload.push_str("null");
-        }
+        Err(diag) => { println!("Error: {}", diag); }
     }
-
+/*
     for ROW in recordset {
         for CELL in &ROW {
             payload.push_str(&CELL[..]);
@@ -29,20 +32,13 @@ pub fn entry_point() -> String {
             }
         }
         payload.push_str("\n");
-    }
-/*
-    let mut clipctx = ClipboardContext::new().unwrap();
-
-    match clipctx.set_contents(payload) {
-        Ok(_) => println!("Success"),
-        Err(_) => println!("Fail"),
-    }
+    } 
 */
-    payload
+    recordset
 }
 
 pub fn connect(
-    recordset: &mut Vec<Vec<String>>,
+    recordset: &mut RecordSet<String, odbc::ffi::SqlDataType>,
     _dsn: String,
     sql_text: String,
 ) -> std::result::Result<(), DiagnosticRecord> {
@@ -59,33 +55,39 @@ pub fn connect(
 
 fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
-    recordset: &mut Vec<Vec<String>>,
+    recordset: &mut RecordSet<String, odbc::ffi::SqlDataType>,
     sql_text: String,
 ) -> odbc::Result<()> {
     let stmt = Statement::with_parent(conn)?;
 
     match stmt.exec_direct(&sql_text)? {
         Data(mut stmt) => {
+            recordset.construct(&mut stmt);
             let cols = stmt.num_result_cols()?;
             while let Some(mut cursor) = stmt.fetch()? {
-                let mut consumption: Vec<String> = Vec::with_capacity(cols as usize);
+                //.fetch() grabs another row of data. create a record here
+                //let mut consumption: Vec<String> = Vec::with_capacity(cols as usize);
+
+                let mut rec: Record<String> = Record { columns: HashMap::new(), };
+                rec.construct(&recordset.column_info);
+
                 for i in 1..(cols + 1) {
+
+//move this *.describe_col to the *.construct method 
                     match cursor.get_data::<&str>(i as u16)? {
-                        Some(val) => consumption.push(val.to_owned()),
-                        None => consumption.push(String::from("NULL")),
+                        Some(val) => rec.add(recordset.column_order.get(i as usize).unwrap().clone(), String::from(val)),
+                        None => { rec.add(recordset.column_order.get(i as usize).unwrap().clone(), String::from("Null")) },
                     }
                 }
-                recordset.push(consumption);
-                println!("len: {}", recordset.len());
-                println!("consumptionlen: {}", recordset[0].len());
-                println!("{}", recordset[recordset.len() - 1][0]);
+                recordset.add(rec);
             }
         }
-        NoData(_) => {
+        NoData(_) => { /*
             let mut a: Vec<String> = Vec::new();
             let b: String = String::from("null");
             a.push(b);
-            recordset.push(a);
+            recordset.add(b);
+             */
         }
     }
     //Ok(recordset)
