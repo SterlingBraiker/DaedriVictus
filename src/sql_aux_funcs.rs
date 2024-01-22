@@ -14,7 +14,7 @@ use std::collections::HashMap;
 /* --> Structs */
 
 pub struct Connection<T> {
-    pub record_set: T,
+    pub record_set: Option<T>,
     pub connection: Connectable,
     pub result_code: i32,
     pub result_details: Option<String>,
@@ -79,13 +79,35 @@ impl RecordSet<sqlite::Value, sqlite::Type> {
         Vec::from(&self.records[range_lower..range_upper])
     }
 }
-
+/*
 impl Default for RecordSet<sqlite::Value, sqlite::Type> {
     fn default() -> Self {
         Self {
             column_info: HashMap::<String, sqlite::Type>::new(),
             column_order: Vec::<String>::new(),
             records: Vec::<Record<sqlite::Value>>::new(),
+        }
+    }
+}
+
+impl Default for RecordSet<String, odbc::ffi::SqlDataType> {
+    fn default() -> Self {
+        Self {
+            column_info: HashMap::<String, odbc::ffi::SqlDataType>::new(),
+            column_order: Vec::<String>::new(),
+            records: Vec::<Record<String>>::new(),
+        }
+    }
+}
+
+ */
+
+ impl<T, U> Default for RecordSet<T, U> {
+    fn default() -> Self {
+        Self {
+            column_info: HashMap::<String, U>::new(),
+            column_order: Vec::<String>::new(),
+            records: Vec::<Record<T>>::new(),
         }
     }
 }
@@ -131,16 +153,6 @@ impl RecordSet<String, odbc::ffi::SqlDataType> {
     }
 }
 
-impl Default for RecordSet<String, odbc::ffi::SqlDataType> {
-    fn default() -> Self {
-        Self {
-            column_info: HashMap::<String, odbc::ffi::SqlDataType>::new(),
-            column_order: Vec::<String>::new(),
-            records: Vec::<Record<String>>::new(),
-        }
-    }
-}
-
 impl<T> Record<T> {
     pub fn add(&mut self, key: String, val: T) {
         self.columns.insert(key, val);
@@ -155,13 +167,9 @@ impl Record<String> {
     }
 }
 
+/*
 //odbc impl
 impl Connection<RecordSet<String, odbc::ffi::SqlDataType>> {
-    pub fn assemble_rs(&mut self, donor_rs: RecordSet<String, odbc::ffi::SqlDataType>) {
-        self.record_set = donor_rs;
-        self.result_code = 1;
-    }
-
     pub fn assemble_err(&mut self, e_msg: DiagnosticRecord) {
         self.result_code = -1;
         self.result_details = Some(String::from_utf8(e_msg.get_raw_message().to_owned()).unwrap());
@@ -170,14 +178,16 @@ impl Connection<RecordSet<String, odbc::ffi::SqlDataType>> {
 
 //sqlite impl
 impl Connection<RecordSet<sqlite::Value, sqlite::Type>> {
-    pub fn assemble_rs(&mut self, donor_rs: RecordSet<sqlite::Value, sqlite::Type>) {
-        self.record_set = donor_rs;
-        self.result_code = 1;
-    }
-
     pub fn assemble_err(&mut self, E: sqlite::Error) {
         self.result_code = -1;
         self.result_details = E.message;
+    }
+}
+ */
+impl<SqlData, SqlType> Connection<RecordSet<SqlData, SqlType>> {
+    pub fn assemble_rs(&mut self, donor_rs: RecordSet<SqlData, SqlType>) {
+        self.record_set = Some(donor_rs);
+        self.result_code = 1;
     }
 }
 

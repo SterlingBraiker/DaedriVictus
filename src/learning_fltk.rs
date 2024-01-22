@@ -47,13 +47,24 @@ pub enum Message {
     SqlServerPacket(Option<i32>),
 }
 
+pub enum SqlData {
+    Sqlite(sqlite::Value),
+    Odbc(String),
+}
+
+pub enum SqlType {
+    Sqlite(sqlite::Value),
+    Odbc(odbc::ffi::SqlDataType),
+}
+
 /* <-- Enums */
 /* --> Structs */
 
-struct FltkHost {
+struct FltkHost<SqlData, SqlType> {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
-    conn: Connection<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>>,
+    //conn: Connection<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>>, //expand this to use either sqlite, odbc
+    conn: Connection<RecordSet<SqlData, SqlType>>,
 }
 
 /* -> notes
@@ -69,8 +80,8 @@ notes */
 /* <-- Structs */
 /* --> Const */
 
-static TABLES: &str =
-    "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
+//static TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
+static TABLES: &str = "select * from results.csv;";
 
 /* <-- Const */
 /* --> Functions */
@@ -82,11 +93,11 @@ pub fn entry_point() {
 fn init_gui<'a>() {
     //testing file input dialogs
     
-    let mut f: FltkHost = FltkHost {
+    let mut f: FltkHost<SqlData, SqlType> = FltkHost {
         fltk_app: App::default().with_scheme(Scheme::Oxy),
         fltk_windows: Vec::new(),
         conn: Connection {
-            record_set: crate::sql_aux_funcs::RecordSet::default(),
+            record_set: None,
             connection: Connectable::None,
             result_code: 0,
             result_details: None,
@@ -262,6 +273,7 @@ fn init_gui<'a>() {
                     Odbc(ref s) => s.clone(),
                     _ => String::from("none"),
                 };
+
                 match attempt_query(&qry[..], &db_name[..]) {
                     Ok(value) => {
                         f.conn.assemble_rs(value);
@@ -324,7 +336,6 @@ fn init_gui<'a>() {
                 spawn_observer(&mut f, &mut outputs, &mut workers, main_app_sender.clone());
             }
             Some(Message::SqlServerPacket(packet)) => {
-                
                 match packet {
                     Some(0) => {
                         match select_file(&f) {
@@ -336,6 +347,7 @@ fn init_gui<'a>() {
                         let conn_str: String = input_conn_str();
                         f.conn.connection = Connectable::Odbc(conn_str);
                         println!("odbc selected");
+                        f.conn.record_set = RecordSet::<String, odbc::ffi::SqlDataType>::default() ;
                     },
                     _ => (),
                 }
@@ -381,23 +393,18 @@ fn center() -> (i32, i32) {
     let ss: (f64, f64) = fltk::app::screen_size();
     ((ss.0 / 2.0) as i32, (ss.1 / 2.0) as i32)
 }
-
-//setup to handle sqlite3 currently
-
+/*
 fn attempt_query(
     textinput: &str,
     db_name: &str,
 ) -> Result<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
     sqlite3::raw_query(String::from(db_name), String::from(textinput))
-}
+} */
 
-//duplicate to work on odbc
-/*
-fn attempt_query() -> Result<(), ()> {
-    odbc::entry_point();
-    Ok(())
+fn attempt_query (textinput: &str, db_name: &str) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType>, DiagnosticRecord> {
+    let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
+    result
 }
-*/
 
 fn clear_table(table: &mut SmartTable) {
     for _ in 0..table.column_count() {
@@ -546,7 +553,7 @@ where
 }
 
 fn spawn_observer(
-    f: &mut FltkHost,
+    f: &mut FltkHost<u8, u8>,
     outputs: &mut Vec<MultilineOutput>,
     workers: &mut Vec<JoinHandle<()>>,
     sndr: Sender<Message>,
@@ -609,7 +616,7 @@ fn spawn_observer(
     f.fltk_windows[1].show();
 }
 
-fn select_file(f: &FltkHost) -> Result<String, std::io::Error> {
+fn select_file<T, U>(f: &FltkHost<T, U>) -> Result<String, std::io::Error> {
     let mut fi = dialog::FileChooser::new(
         ".",
         "*.db",
@@ -627,8 +634,12 @@ fn select_file(f: &FltkHost) -> Result<String, std::io::Error> {
 }
 
 fn input_conn_str() -> String {
-    let input: Input = Input::new(15, 15, 300, 200, "Enter a connection string");
-    input.value()
+    let input: String = match fltk::dialog::input(15, 15, "Enter a connection string", "") {
+        Some(input) => { input },
+        None => { String::from("") },
+    };
+    
+    input
 }
 
 /* <-- Functions */

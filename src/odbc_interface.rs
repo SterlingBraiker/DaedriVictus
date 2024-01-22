@@ -3,51 +3,31 @@ use crate::sql_aux_funcs::{Record, RecordSet};
 use odbc::ColumnDescriptor;
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, NoData,
-    OdbcType, Statement,
+    Statement, Version3,
 };
 use std::io;
 use std::collections::HashMap;
 
-pub fn entry_point() -> RecordSet<String, odbc::ffi::SqlDataType> {
-    let mut recordset: RecordSet<String, odbc::ffi::SqlDataType> = RecordSet {
+pub fn entry_point(dsn: String, sql_text: String) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType>, DiagnosticRecord> {
+    let recordset = RecordSet {
         column_info: HashMap::new(),
         column_order: Vec::new(),
         records: Vec::new(),
     };
-    
-    match connect(
-        &mut recordset,
-        String::from("DSN=odbc2;"),
-        String::from("select * from results.csv;"),
-    ) {
-        Ok(()) => println!("Success"),
-        Err(diag) => { println!("Error: {}", diag); }
-    }
-/*
-    for ROW in recordset {
-        for CELL in &ROW {
-            payload.push_str(&CELL[..]);
-            if CELL != &ROW[ROW.len() - 1] {
-                payload.push_str(", ");
-            }
-        }
-        payload.push_str("\n");
-    } 
-*/
-    recordset
+
+    connect(dsn, sql_text, recordset)
 }
 
 pub fn connect(
-    recordset: &mut RecordSet<String, odbc::ffi::SqlDataType>,
-    _dsn: String,
+    dsn: String,
     sql_text: String,
-) -> std::result::Result<(), DiagnosticRecord> {
-    let env = create_environment_v3().map_err(|e| e.unwrap())?;
-    //let conn = env.connect_with_connection_string(&dsn)?; //force the connection now to a single file, allow for user choice later
+    recordset: RecordSet<String, odbc::ffi::SqlDataType>
+) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType>, DiagnosticRecord> {
+    let environment: odbc::Environment<odbc::odbc_safe::Odbc3> = create_environment_v3().map_err(|e| e.unwrap())?;
 
-    //migrate to a DSN instead of conn string?
-    let conn = env.connect_with_connection_string(
-        "Driver=Microsoft Access Text Driver (*.txt, *.csv);Dbq=D:\\;Extensions=asc,csv,tab,txt;",
+    let conn = environment.connect_with_connection_string(
+        //"Driver=Microsoft Access Text Driver (*.txt, *.csv);Dbq=D:\\;Extensions=asc,csv,tab,txt;",
+        &dsn
     )?;
 
     execute_statement(&conn, recordset, sql_text)
@@ -55,14 +35,14 @@ pub fn connect(
 
 fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
-    recordset: &mut RecordSet<String, odbc::ffi::SqlDataType>,
+    mut recordset: RecordSet<String, odbc::ffi::SqlDataType>,
     sql_text: String,
-) -> odbc::Result<()> {
+) -> odbc::Result<RecordSet<String, odbc::ffi::SqlDataType>> { //add a lifetime to the recordset which originates from outside of entry_point()
     let stmt = Statement::with_parent(conn)?;
 
     match stmt.exec_direct(&sql_text)? {
         Data(mut stmt) => {
-            recordset.construct(&mut stmt);
+            recordset.construct(&mut stmt)?;
             let cols = stmt.num_result_cols()?;
             while let Some(mut cursor) = stmt.fetch()? {
                 //.fetch() grabs another row of data. create a record here
@@ -73,7 +53,6 @@ fn execute_statement<'env>(
 
                 for i in 1..(cols + 1) {
 
-//move this *.describe_col to the *.construct method 
                     match cursor.get_data::<&str>(i as u16)? {
                         Some(val) => rec.add(recordset.column_order.get(i as usize).unwrap().clone(), String::from(val)),
                         None => { rec.add(recordset.column_order.get(i as usize).unwrap().clone(), String::from("Null")) },
@@ -90,6 +69,5 @@ fn execute_statement<'env>(
              */
         }
     }
-    //Ok(recordset)
-    Ok(())
+    Ok(recordset)
 }
