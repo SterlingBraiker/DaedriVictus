@@ -7,8 +7,8 @@
 */
 
 use crate::odbc_interface;
-use odbc::*;
 use crate::sqlite3_interface::*;
+use odbc::*;
 use std::collections::HashMap;
 
 /* --> Structs */
@@ -21,10 +21,11 @@ pub struct Connection<T> {
 }
 
 #[derive(Clone)]
-pub struct RecordSet<T, U> {
+pub struct RecordSet<T, U, E> {
     pub column_info: HashMap<String, U>,
     pub column_order: Vec<String>,
     pub records: Vec<Record<T>>,
+    pub error_interface: E,
 }
 
 #[derive(Clone, Default)]
@@ -40,7 +41,10 @@ pub enum Connectable {
 }
 
 impl RecordSet<sqlite::Value, sqlite::Type> {
-    pub fn construct(&mut self, stmt: &mut sqlite::Statement) -> std::result::Result<(), sqlite::Error> {
+    pub fn construct(
+        &mut self,
+        stmt: &mut sqlite::Statement,
+    ) -> std::result::Result<(), sqlite::Error> {
         stmt.next()?;
 
         for name in stmt.column_names() {
@@ -102,7 +106,7 @@ impl Default for RecordSet<String, odbc::ffi::SqlDataType> {
 
  */
 
- impl<T, U> Default for RecordSet<T, U> {
+impl<T, U> Default for RecordSet<T, U> {
     fn default() -> Self {
         Self {
             column_info: HashMap::<String, U>::new(),
@@ -113,16 +117,19 @@ impl Default for RecordSet<String, odbc::ffi::SqlDataType> {
 }
 
 impl RecordSet<String, odbc::ffi::SqlDataType> {
-    pub fn construct(&mut self, stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>) -> std::result::Result<(), odbc::DiagnosticRecord> {
-
+    pub fn construct(
+        &mut self,
+        stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>,
+    ) -> std::result::Result<(), odbc::DiagnosticRecord> {
         for col_index in 1..stmt.num_result_cols()? {
             let col_description: ColumnDescriptor = stmt.describe_col(col_index as u16)?;
             self.column_info.insert(
                 String::from(col_description.name.clone()),
                 col_description.data_type,
             );
-            self.column_order.push(String::from(col_description.name.clone()));
-        };
+            self.column_order
+                .push(String::from(col_description.name.clone()));
+        }
         Ok(())
     } //fill fields 'column_count', 'column_info'
 
@@ -184,11 +191,14 @@ impl Connection<RecordSet<sqlite::Value, sqlite::Type>> {
     }
 }
  */
-impl<SqlData, SqlType> Connection<RecordSet<SqlData, SqlType>> {
+impl<SqlData, SqlType, SqlError> Connection<RecordSet<SqlData, SqlType>> {
     pub fn assemble_rs(&mut self, donor_rs: RecordSet<SqlData, SqlType>) {
         self.record_set = Some(donor_rs);
         self.result_code = 1;
     }
+
+    pub fn assemble_err(&mut self, the_error: SqlError) -> ()
+    where the_error: SqlError {}
 }
 
 /* <-- Structs */

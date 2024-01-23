@@ -21,8 +21,8 @@ use fltk::{
     window,
 };
 
-use crate::sqlite3_interface as sqlite3;
 use crate::odbc_interface::*;
+use crate::sqlite3_interface as sqlite3;
 use fltk_table::{SmartTable, TableOpts};
 
 use crate::sql_aux_funcs::{
@@ -55,6 +55,11 @@ pub enum SqlData {
 pub enum SqlType {
     Sqlite(sqlite::Value),
     Odbc(odbc::ffi::SqlDataType),
+}
+
+pub enum SqlError {
+    Sqlite(sqlite::Error),
+    Odbc(DiagnosticRecord),
 }
 
 /* <-- Enums */
@@ -92,7 +97,7 @@ pub fn entry_point() {
 
 fn init_gui<'a>() {
     //testing file input dialogs
-    
+
     let mut f: FltkHost<SqlData, SqlType> = FltkHost {
         fltk_app: App::default().with_scheme(Scheme::Oxy),
         fltk_windows: Vec::new(),
@@ -106,7 +111,9 @@ fn init_gui<'a>() {
 
     // create SQL window
     // Create controls
-    let sql_window = window::Window::default().with_size(1280, 760).center_screen();
+    let sql_window = window::Window::default()
+        .with_size(1280, 760)
+        .center_screen();
     f.fltk_windows.push(sql_window);
 
     let mut main_menu: MenuBar = MenuBar::default().with_size(1280, 30).with_pos(0, 0);
@@ -257,8 +264,8 @@ fn init_gui<'a>() {
             children_bounds.3,
         );
         //refactored to use *.center_screen()
-//        let (x, y): (i32, i32) = center();
-//        f.fltk_windows[0].set_pos(x, y - (760 / 2));
+        //        let (x, y): (i32, i32) = center();
+        //        f.fltk_windows[0].set_pos(x, y - (760 / 2));
     }
 
     let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
@@ -337,18 +344,18 @@ fn init_gui<'a>() {
             }
             Some(Message::SqlServerPacket(packet)) => {
                 match packet {
-                    Some(0) => {
-                        match select_file(&f) {
-                            Ok(selected_file) => f.conn.connection = Connectable::Sqlite3(selected_file),
-                            Err(E) => println!("Invalid operation during file selection, {E:?}"),
+                    Some(0) => match select_file(&f) {
+                        Ok(selected_file) => {
+                            f.conn.connection = Connectable::Sqlite3(selected_file)
                         }
+                        Err(E) => println!("Invalid operation during file selection, {E:?}"),
                     },
                     Some(1) => {
                         let conn_str: String = input_conn_str();
                         f.conn.connection = Connectable::Odbc(conn_str);
                         println!("odbc selected");
-                        f.conn.record_set = RecordSet::<String, odbc::ffi::SqlDataType>::default() ;
-                    },
+                        f.conn.record_set = RecordSet::<String, odbc::ffi::SqlDataType>::default();
+                    }
                     _ => (),
                 }
                 if f.conn.connection != Connectable::None {
@@ -401,7 +408,10 @@ fn attempt_query(
     sqlite3::raw_query(String::from(db_name), String::from(textinput))
 } */
 
-fn attempt_query (textinput: &str, db_name: &str) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType>, DiagnosticRecord> {
+fn attempt_query(
+    textinput: &str,
+    db_name: &str,
+) -> std::result::Result<RecordSet<SqlData, SqlType>, DiagnosticRecord> {
     let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
     result
 }
@@ -532,7 +542,7 @@ fn resize_window_to_children<T>(bounds: Vec<(T, T, T, T)>) -> (T, T, T, T)
 where
     T: std::cmp::PartialOrd + std::default::Default,
 {
-    let mut boundary: (T, T, T, T) = ( T::default(), T::default(), T::default(), T::default() );
+    let mut boundary: (T, T, T, T) = (T::default(), T::default(), T::default(), T::default());
 
     for current_boundary in bounds {
         if boundary.0 > current_boundary.0 {
@@ -617,12 +627,8 @@ fn spawn_observer(
 }
 
 fn select_file<T, U>(f: &FltkHost<T, U>) -> Result<String, std::io::Error> {
-    let mut fi = dialog::FileChooser::new(
-        ".",
-        "*.db",
-        dialog::FileChooserType::Single,
-        "Select a DB",
-    );
+    let mut fi =
+        dialog::FileChooser::new(".", "*.db", dialog::FileChooserType::Single, "Select a DB");
     let center_of_screen: (i32, i32) = center();
     fi.show();
     fi.window().set_pos(center_of_screen.0, center_of_screen.1);
@@ -635,10 +641,10 @@ fn select_file<T, U>(f: &FltkHost<T, U>) -> Result<String, std::io::Error> {
 
 fn input_conn_str() -> String {
     let input: String = match fltk::dialog::input(15, 15, "Enter a connection string", "") {
-        Some(input) => { input },
-        None => { String::from("") },
+        Some(input) => input,
+        None => String::from(""),
     };
-    
+
     input
 }
 
