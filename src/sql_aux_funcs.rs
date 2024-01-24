@@ -6,20 +6,30 @@
 
 */
 
-use crate::odbc_interface;
+use crate::odbc_interface::*;
 use crate::sqlite3_interface::*;
 use odbc::*;
 use std::collections::HashMap;
+use crate::sqlite3_interface::Error as Sqlite3Error;
 
 /* --> Structs */
 
+// What kind of DB are we connecting to?
+pub enum ConnectionBase<T> {
+    Odbc(Connection<T>),
+    Sqlite(Connection<T>),
+    None,
+}
+
+// Connection details & reference the recordset
 pub struct Connection<T> {
     pub record_set: Option<T>,
     pub connection: Connectable,
     pub result_code: i32,
-    pub result_details: Option<String>,
+    pub result_details: Option<String>
 }
 
+// Handles all results (records, errors)
 #[derive(Clone)]
 pub struct RecordSet<T, U, E> {
     pub column_info: HashMap<String, U>,
@@ -33,6 +43,8 @@ pub struct Record<T> {
     pub columns: HashMap<String, T>,
 }
 
+// Points to the database (connection string for ODBC,
+// or a filename for SQLite)
 #[derive(Debug, PartialEq)]
 pub enum Connectable {
     Sqlite3(String),
@@ -40,7 +52,30 @@ pub enum Connectable {
     None,
 }
 
-impl RecordSet<sqlite::Value, sqlite::Type> {
+pub enum SqlData {
+    Sqlite(sqlite::Value),
+    Odbc(String),
+}
+
+pub enum SqlType {
+    Sqlite(sqlite::Value),
+    Odbc(odbc::ffi::SqlDataType),
+}
+
+pub enum SqlError {
+    Sqlite(Sqlite3error),
+    Odbc(OdbcDiagnosticRecord),
+    None
+}
+
+impl Default for SqlError {
+    fn default() -> Self {
+        SqlError::None
+    }
+}
+
+
+impl RecordSet<sqlite::Value, sqlite::Type, Sqlite3Error> {
     pub fn construct(
         &mut self,
         stmt: &mut sqlite::Statement,
@@ -83,40 +118,19 @@ impl RecordSet<sqlite::Value, sqlite::Type> {
         Vec::from(&self.records[range_lower..range_upper])
     }
 }
-/*
-impl Default for RecordSet<sqlite::Value, sqlite::Type> {
-    fn default() -> Self {
-        Self {
-            column_info: HashMap::<String, sqlite::Type>::new(),
-            column_order: Vec::<String>::new(),
-            records: Vec::<Record<sqlite::Value>>::new(),
-        }
-    }
-}
 
-impl Default for RecordSet<String, odbc::ffi::SqlDataType> {
-    fn default() -> Self {
-        Self {
-            column_info: HashMap::<String, odbc::ffi::SqlDataType>::new(),
-            column_order: Vec::<String>::new(),
-            records: Vec::<Record<String>>::new(),
-        }
-    }
-}
-
- */
-
-impl<T, U> Default for RecordSet<T, U> {
+impl<T, U, E: std::default::Default> Default for RecordSet<T, U, E> {
     fn default() -> Self {
         Self {
             column_info: HashMap::<String, U>::new(),
             column_order: Vec::<String>::new(),
             records: Vec::<Record<T>>::new(),
+            error_interface: E::default(),
         }
     }
 }
 
-impl RecordSet<String, odbc::ffi::SqlDataType> {
+impl RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord> {
     pub fn construct(
         &mut self,
         stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>,
@@ -191,14 +205,20 @@ impl Connection<RecordSet<sqlite::Value, sqlite::Type>> {
     }
 }
  */
-impl<SqlData, SqlType, SqlError> Connection<RecordSet<SqlData, SqlType>> {
-    pub fn assemble_rs(&mut self, donor_rs: RecordSet<SqlData, SqlType>) {
+impl<SqlData, SqlType, SqlError> Connection<RecordSet<SqlData, SqlType, SqlError>> {
+    pub fn assemble_rs(&mut self, donor_rs: RecordSet<SqlData, SqlType, SqlError>) {
         self.record_set = Some(donor_rs);
         self.result_code = 1;
     }
 
-    pub fn assemble_err(&mut self, the_error: SqlError) -> ()
-    where the_error: SqlError {}
+    pub fn assemble_err(&mut self, the_error: SqlError) -> () {
+        self.result_code = -1;
+        self.result_details = match self.record_set.error_interface {
+            crate::sql_aux_funcs::SqlError::Odbc(ref E) => { Some(E.message_string().clone()) },
+            crate::sql_aux_funcs::SqlError::Sqlite(ref E) => { E.message.clone() },
+            None => {},
+        }
+    }
 }
 
 /* <-- Structs */

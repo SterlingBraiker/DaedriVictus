@@ -7,14 +7,31 @@ pub use sqlite::{
     Value::{
         Binary as SqliteBinary, Float as SqliteFloat, Integer as SqliteInteger, Null as SqliteNull,
         String as SqliteString,
-    },
+    }, Error,
 };
 use std::collections::HashMap;
 use std::fs;
 use std::io;
 
 /* <-- Imports */
+/* --> Structs */
+
+pub struct Sqlite3error {
+    wrapped_error: Option<Error>,
+}
+
+impl Default for Sqlite3error {
+    fn default() -> Self {
+        Self {
+            wrapped_error: None,
+        }
+    }
+}
+
+
+/* <-- Structs */
 /* --> Enums */
+
 
 /* <-- Enums */
 /* --> Functions */
@@ -22,7 +39,7 @@ use std::io;
 pub fn raw_query(
     db_name: String,
     query: String,
-) -> Result<RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
+) -> Result<RecordSet<sqlite::Value, sqlite::Type, sqlite::Error>, sqlite::Error> {
     let db_handle = sqlite::open(&db_name)?;
 
     //do I need to trim the query here? Is this always a safe practice?
@@ -98,15 +115,16 @@ fn build_db(db_handle: &sqlite::Connection) -> Result<(), sqlite::Error> {
 fn select_from(
     db_handle: &sqlite::Connection,
     query: &str,
-) -> Result<RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
+) -> Result<RecordSet<sqlite::Value, sqlite::Type, sqlite::Error>, sqlite::Error> {
     let mut stmt = db_handle.prepare(query)?;
     //bind parameters function call here
 
-    //construct recordset meta data
-    let mut record_set: RecordSet<sqlite::Value, sqlite::Type> = RecordSet {
+    //construct recordset
+    let mut record_set: RecordSet<sqlite::Value, sqlite::Type, sqlite::Error> = RecordSet {
         column_info: HashMap::new(),
         column_order: Vec::new(),
         records: Vec::new(),
+        error_interface: sqlite::Error::default(),
     };
     record_set.construct(&mut stmt)?;
 
@@ -140,7 +158,7 @@ fn select_from(
     Ok(record_set)
 }
 
-pub fn print_results(record_set: &RecordSet<sqlite::Value, sqlite::Type>) -> String {
+pub fn print_results(record_set: &RecordSet<sqlite::Value, sqlite::Type, sqlite::Error>) -> String {
     println!("Printing records\n==============\n");
     let mut text_payload: String = String::new();
     let mut current_line: String = String::new();

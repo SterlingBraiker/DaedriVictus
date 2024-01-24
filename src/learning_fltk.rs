@@ -29,6 +29,7 @@ use crate::sql_aux_funcs::{
     Connectable,
     Connectable::{Odbc, Sqlite3},
     Connection, Record, RecordSet, Translate,
+    SqlData, SqlType, SqlError
 };
 use crate::AuxFuncs;
 use rand::{thread_rng, Rng};
@@ -47,21 +48,6 @@ pub enum Message {
     SqlServerPacket(Option<i32>),
 }
 
-pub enum SqlData {
-    Sqlite(sqlite::Value),
-    Odbc(String),
-}
-
-pub enum SqlType {
-    Sqlite(sqlite::Value),
-    Odbc(odbc::ffi::SqlDataType),
-}
-
-pub enum SqlError {
-    Sqlite(sqlite::Error),
-    Odbc(DiagnosticRecord),
-}
-
 /* <-- Enums */
 /* --> Structs */
 
@@ -69,7 +55,7 @@ struct FltkHost<SqlData, SqlType> {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
     //conn: Connection<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>>, //expand this to use either sqlite, odbc
-    conn: Connection<RecordSet<SqlData, SqlType>>,
+    conn: Connection<RecordSet<SqlData, SqlType, SqlError>>,
 }
 
 /* -> notes
@@ -411,7 +397,7 @@ fn attempt_query(
 fn attempt_query(
     textinput: &str,
     db_name: &str,
-) -> std::result::Result<RecordSet<SqlData, SqlType>, DiagnosticRecord> {
+) -> std::result::Result<RecordSet<SqlData, SqlType, SqlError>, SqlError> {
     let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
     result
 }
@@ -426,7 +412,7 @@ fn clear_table(table: &mut SmartTable) {
 }
 
 fn add_columns_to_table<'a>(
-    record_set: &'a crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>,
+    record_set: &'a crate::sql_aux_funcs::RecordSet<SqlData, SqlType, SqlError>,
     table: &mut SmartTable,
 ) -> HashMap<&'a String, i32> {
     let mut col_width_map: HashMap<&'a String, i32> =
@@ -444,7 +430,7 @@ fn add_columns_to_table<'a>(
 }
 
 fn resize_columns<'a>(
-    record_set: &'a crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>,
+    record_set: &'a crate::sql_aux_funcs::RecordSet<SqlData, SqlType, SqlError>,
     col_width_map: &mut HashMap<&'a String, i32>,
     table: &mut SmartTable,
 ) {
@@ -508,7 +494,7 @@ fn resize_columns<'a>(
 }
 
 fn fill_table(
-    record_set: &crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>,
+    record_set: &crate::sql_aux_funcs::RecordSet<SqlData, SqlType, SqlError>,
     table: &mut SmartTable,
     paged_records: Vec<Record<sqlite::Value>>,
 ) {

@@ -8,6 +8,24 @@ pub use odbc::{
 use std::collections::HashMap;
 use std::io;
 
+/* <-- Imports */
+/* --> Structs */
+
+pub struct OdbcDiagnosticRecord {
+    wrapped_error: Option<DiagnosticRecord>,
+}
+
+impl Default for OdbcDiagnosticRecord {
+    fn default() -> Self { 
+        OdbcDiagnosticRecord {
+            wrapped_error: None,
+        }
+    }
+}
+
+/* <-- Structs */
+/* --> Functions */
+
 pub fn entry_point(
     dsn: String,
     sql_text: String,
@@ -16,6 +34,7 @@ pub fn entry_point(
         column_info: HashMap::new(),
         column_order: Vec::new(),
         records: Vec::new(),
+        error_interface: OdbcDiagnosticRecord::default(),
     };
 
     connect(dsn, sql_text, recordset)
@@ -24,8 +43,8 @@ pub fn entry_point(
 pub fn connect(
     dsn: String,
     sql_text: String,
-    recordset: RecordSet<String, odbc::ffi::SqlDataType>,
-) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType>, DiagnosticRecord> {
+    recordset: RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>,
+) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>, DiagnosticRecord> {
     let environment: odbc::Environment<odbc::odbc_safe::Odbc3> =
         create_environment_v3().map_err(|e| e.unwrap())?;
 
@@ -39,9 +58,9 @@ pub fn connect(
 
 fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
-    mut recordset: RecordSet<String, odbc::ffi::SqlDataType>,
-    sql_text: String,
-) -> odbc::Result<RecordSet<String, odbc::ffi::SqlDataType>> {
+    mut recordset: RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>,
+    sql_text: String
+) -> odbc::Result<RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>> {
     //add a lifetime to the recordset which originates from outside of entry_point()
     let stmt = Statement::with_parent(conn)?;
 
@@ -83,3 +102,5 @@ fn execute_statement<'env>(
     }
     Ok(recordset)
 }
+
+/* <-- Functions */
