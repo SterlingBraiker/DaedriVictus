@@ -26,10 +26,8 @@ use crate::sqlite3_interface as sqlite3;
 use fltk_table::{SmartTable, TableOpts};
 
 use crate::sql_aux_funcs::{
-    Connectable,
-    Connectable::{Odbc, Sqlite3},
-    Connection, Record, RecordSet, Translate,
-    SqlData, SqlType, SqlError
+    Connection, Record, RecordSet, SqlData, SqlError, SqlType, Translate,
+    ConnectionBase,
 };
 use crate::AuxFuncs;
 use rand::{thread_rng, Rng};
@@ -58,16 +56,6 @@ struct FltkHost<SqlData, SqlType> {
     conn: Connection<RecordSet<SqlData, SqlType, SqlError>>,
 }
 
-/* -> notes
-
-sqlite
-    raw_query(db_name: String, query: String) -> Result<RecordSet, sqlite::Error>
-
-odbc
-    connect(recordset: &mut Vec<Vec<String>>, dsn: String) -> std::result::Result<(), DiagnosticRecord>
-    execute_statement<'env>(conn: &Connection<'env, AutocommitOn>, recordset: &mut Vec<Vec<String>>, sql_text: String) -> Result<String, >
-
-notes */
 /* <-- Structs */
 /* --> Const */
 
@@ -89,9 +77,10 @@ fn init_gui<'a>() {
         fltk_windows: Vec::new(),
         conn: Connection {
             record_set: None,
-            connection: Connectable::None,
+            connection: None,
             result_code: 0,
             result_details: None,
+            connection_type: crate::sql_aux_funcs::ConnectionBase::Sqlite,
         },
     };
 
@@ -261,10 +250,9 @@ fn init_gui<'a>() {
     while f.fltk_app.wait() {
         match main_app_receiver.recv() {
             Some(Message::Query(qry)) => {
-                let db_name = match f.conn.connection {
-                    Sqlite3(ref s) => s.clone(),
-                    Odbc(ref s) => s.clone(),
-                    _ => String::from("none"),
+                let db_name = match f.conn.connection_type {
+                    crate::sql_aux_funcs::ConnectionBase::Sqlite
+                    | crate::sql_aux_funcs::ConnectionBase::Odbc => f.conn.connection.unwrap().clone(),
                 };
 
                 match attempt_query(&qry[..], &db_name[..]) {
@@ -272,8 +260,18 @@ fn init_gui<'a>() {
                         f.conn.assemble_rs(value);
                     }
                     Err(E) => {
-                        println!("failed to submit query: {E:?}");
                         f.conn.assemble_err(E);
+                        /* //this is doing unecessary operations because unwrapping is handled inside the *.assemble_err() method
+                        // at this point we should just be passing in the SqlError to its method
+                        match E {
+                            crate::sql_aux_funcs::SqlError::Sqlite(the_sqlite_error) => {
+                                let error_unwrapped = the_sqlite_error.wrapped_error.unwrap();
+                                println!("failed to submit query: {error_unwrapped:?}");
+                                f.conn.assemble_err(error_unwrapped);
+                            },
+                            Odbc(the_odbc_error) => {},
+                            None => {},
+                        }  */
                     }
                 }
             }

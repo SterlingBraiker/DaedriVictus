@@ -3,11 +3,11 @@
 use crate::sql_aux_funcs::Translate;
 use crate::sql_aux_funcs::{Record, RecordSet};
 pub use sqlite::{
-    Bindable, BindableWithIndex, Connection, State, Statement, Type,
+    Bindable, BindableWithIndex, Connection, Error, State, Statement, Type,
     Value::{
         Binary as SqliteBinary, Float as SqliteFloat, Integer as SqliteInteger, Null as SqliteNull,
         String as SqliteString,
-    }, Error,
+    },
 };
 use std::collections::HashMap;
 use std::fs;
@@ -17,7 +17,7 @@ use std::io;
 /* --> Structs */
 
 pub struct Sqlite3error {
-    wrapped_error: Option<Error>,
+    pub wrapped_error: Option<sqlite::Error>,
 }
 
 impl Default for Sqlite3error {
@@ -28,10 +28,8 @@ impl Default for Sqlite3error {
     }
 }
 
-
 /* <-- Structs */
 /* --> Enums */
-
 
 /* <-- Enums */
 /* --> Functions */
@@ -39,7 +37,7 @@ impl Default for Sqlite3error {
 pub fn raw_query(
     db_name: String,
     query: String,
-) -> Result<RecordSet<sqlite::Value, sqlite::Type, sqlite::Error>, sqlite::Error> {
+) -> Result<RecordSet<sqlite::Value, sqlite::Type, Sqlite3error>, Option<sqlite::Error>> {
     let db_handle = sqlite::open(&db_name)?;
 
     //do I need to trim the query here? Is this always a safe practice?
@@ -49,7 +47,7 @@ pub fn raw_query(
     Ok(result)
 }
 
-pub fn cli_query(db_name: String) -> Result<(), sqlite::Error> {
+pub fn cli_query(db_name: String) -> Result<(), Option<sqlite::Error>> {
     //start the db
     let db_handle = sqlite::open(&db_name)?;
     let confirmation = &String::from("y")[..];
@@ -115,17 +113,18 @@ fn build_db(db_handle: &sqlite::Connection) -> Result<(), sqlite::Error> {
 fn select_from(
     db_handle: &sqlite::Connection,
     query: &str,
-) -> Result<RecordSet<sqlite::Value, sqlite::Type, sqlite::Error>, sqlite::Error> {
+) -> Result<RecordSet<sqlite::Value, sqlite::Type, Sqlite3error>, Option<sqlite::Error>> {
     let mut stmt = db_handle.prepare(query)?;
     //bind parameters function call here
 
     //construct recordset
-    let mut record_set: RecordSet<sqlite::Value, sqlite::Type, sqlite::Error> = RecordSet {
+    let mut record_set: RecordSet<sqlite::Value, sqlite::Type, Sqlite3error> = RecordSet {
         column_info: HashMap::new(),
         column_order: Vec::new(),
         records: Vec::new(),
-        error_interface: sqlite::Error::default(),
+        error_interface: Sqlite3error::default(),
     };
+
     record_set.construct(&mut stmt)?;
 
     //then read recordsets from Sqlite
@@ -158,7 +157,7 @@ fn select_from(
     Ok(record_set)
 }
 
-pub fn print_results(record_set: &RecordSet<sqlite::Value, sqlite::Type, sqlite::Error>) -> String {
+pub fn print_results(record_set: &RecordSet<sqlite::Value, sqlite::Type, Sqlite3error>) -> String {
     println!("Printing records\n==============\n");
     let mut text_payload: String = String::new();
     let mut current_line: String = String::new();

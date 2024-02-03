@@ -1,5 +1,5 @@
 use crate::sql_aux_funcs::Translate;
-use crate::sql_aux_funcs::{Record, RecordSet};
+use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType};
 use odbc::ColumnDescriptor;
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, NoData,
@@ -16,7 +16,7 @@ pub struct OdbcDiagnosticRecord {
 }
 
 impl Default for OdbcDiagnosticRecord {
-    fn default() -> Self { 
+    fn default() -> Self {
         OdbcDiagnosticRecord {
             wrapped_error: None,
         }
@@ -29,12 +29,12 @@ impl Default for OdbcDiagnosticRecord {
 pub fn entry_point(
     dsn: String,
     sql_text: String,
-) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>, DiagnosticRecord> {
-    let recordset = RecordSet {
-        column_info: HashMap::new(),
+) -> std::result::Result<RecordSet<SqlData, SqlType, SqlError>, SqlError> {
+    let recordset: RecordSet<SqlData, SqlType, SqlError> = RecordSet {
+        column_info: HashMap::<String, SqlType>::new(),
         column_order: Vec::new(),
-        records: Vec::new(),
-        error_interface: OdbcDiagnosticRecord::default(),
+        records: Vec::<Record<SqlData>>::new(),
+        error_interface: SqlError::default(),
     };
 
     connect(dsn, sql_text, recordset)
@@ -43,8 +43,8 @@ pub fn entry_point(
 pub fn connect(
     dsn: String,
     sql_text: String,
-    recordset: RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>,
-) -> std::result::Result<RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>, DiagnosticRecord> {
+    recordset: RecordSet<SqlData, SqlType, SqlError>,
+) -> std::result::Result<RecordSet<SqlData, SqlType, SqlError>, SqlError> {
     let environment: odbc::Environment<odbc::odbc_safe::Odbc3> =
         create_environment_v3().map_err(|e| e.unwrap())?;
 
@@ -58,8 +58,8 @@ pub fn connect(
 
 fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
-    mut recordset: RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>,
-    sql_text: String
+    mut recordset: RecordSet<SqlData, SqlType, SqlError>,
+    sql_text: String,
 ) -> odbc::Result<RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord>> {
     //add a lifetime to the recordset which originates from outside of entry_point()
     let stmt = Statement::with_parent(conn)?;

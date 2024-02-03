@@ -7,49 +7,43 @@
 */
 
 use crate::odbc_interface::*;
+
+//why am i importing this as Sqlite3Error? I have Sqlite3error defined within crate::sqlite3_interface
+//use crate::sqlite3_interface::Error as Sqlite3Error;
+
 use crate::sqlite3_interface::*;
 use odbc::*;
 use std::collections::HashMap;
-use crate::sqlite3_interface::Error as Sqlite3Error;
 
 /* --> Structs */
 
-// What kind of DB are we connecting to?
-pub enum ConnectionBase<T> {
-    Odbc(Connection<T>),
-    Sqlite(Connection<T>),
-    None,
+// Connection details & reference the recordset
+pub struct Connection<RecordSet> {
+    pub record_set: Option<RecordSet>,
+    pub connection: Option<String>,
+    pub result_code: i32,
+    pub result_details: Option<String>,
+    pub connection_type: ConnectionBase,
 }
 
-// Connection details & reference the recordset
-pub struct Connection<T> {
-    pub record_set: Option<T>,
-    pub connection: Connectable,
-    pub result_code: i32,
-    pub result_details: Option<String>
+// What kind of DB are we connecting to?
+pub enum ConnectionBase {
+    Odbc,
+    Sqlite,
 }
 
 // Handles all results (records, errors)
 #[derive(Clone)]
-pub struct RecordSet<T, U, E> {
-    pub column_info: HashMap<String, U>,
+pub struct RecordSet<SqlData, SqlType, SqlError> {
+    pub column_info: HashMap<String, SqlType>,
     pub column_order: Vec<String>,
-    pub records: Vec<Record<T>>,
-    pub error_interface: E,
+    pub records: Vec<Record<SqlData>>,
+    pub error_interface: SqlError,
 }
 
 #[derive(Clone, Default)]
-pub struct Record<T> {
-    pub columns: HashMap<String, T>,
-}
-
-// Points to the database (connection string for ODBC,
-// or a filename for SQLite)
-#[derive(Debug, PartialEq)]
-pub enum Connectable {
-    Sqlite3(String),
-    Odbc(String),
-    None,
+pub struct Record<SqlData> {
+    pub columns: HashMap<String, SqlData>,
 }
 
 pub enum SqlData {
@@ -65,7 +59,7 @@ pub enum SqlType {
 pub enum SqlError {
     Sqlite(Sqlite3error),
     Odbc(OdbcDiagnosticRecord),
-    None
+    None,
 }
 
 impl Default for SqlError {
@@ -74,8 +68,7 @@ impl Default for SqlError {
     }
 }
 
-
-impl RecordSet<sqlite::Value, sqlite::Type, Sqlite3Error> {
+impl RecordSet<sqlite::Value, sqlite::Type, Sqlite3error> {
     pub fn construct(
         &mut self,
         stmt: &mut sqlite::Statement,
@@ -213,10 +206,12 @@ impl<SqlData, SqlType, SqlError> Connection<RecordSet<SqlData, SqlType, SqlError
 
     pub fn assemble_err(&mut self, the_error: SqlError) -> () {
         self.result_code = -1;
-        self.result_details = match self.record_set.error_interface {
-            crate::sql_aux_funcs::SqlError::Odbc(ref E) => { Some(E.message_string().clone()) },
-            crate::sql_aux_funcs::SqlError::Sqlite(ref E) => { E.message.clone() },
-            None => {},
+        self.result_details = match self {
+            Odbc => Some(String::from("Text")),
+            Sqlite => Some(String::from("Text")),
+            //            Some(crate::sql_aux_funcs::SqlError::Odbc(ref E)) => Some(E.message_string().clone()),
+            //            Some(crate::sql_aux_funcs::SqlError::Sqlite(ref E)) => E.message.clone(),
+            //            None => {}
         }
     }
 }
