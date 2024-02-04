@@ -49,11 +49,11 @@ pub enum Message {
 /* <-- Enums */
 /* --> Structs */
 
-struct FltkHost<SqlData, SqlType> {
+struct FltkHost {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
     //conn: Connection<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>>, //expand this to use either sqlite, odbc
-    conn: Connection<RecordSet<SqlData, SqlType, SqlError>>,
+    conn: Connection,
 }
 
 /* <-- Structs */
@@ -72,15 +72,15 @@ pub fn entry_point() {
 fn init_gui<'a>() {
     //testing file input dialogs
 
-    let mut f: FltkHost<SqlData, SqlType> = FltkHost {
+    let mut f: FltkHost = FltkHost {
         fltk_app: App::default().with_scheme(Scheme::Oxy),
         fltk_windows: Vec::new(),
         conn: Connection {
             record_set: None,
             connection: None,
-            result_code: 0,
+            result_code: None,
             result_details: None,
-            connection_type: crate::sql_aux_funcs::ConnectionBase::Sqlite,
+            connection_type: None,
         },
     };
 
@@ -251,8 +251,8 @@ fn init_gui<'a>() {
         match main_app_receiver.recv() {
             Some(Message::Query(qry)) => {
                 let db_name = match f.conn.connection_type {
-                    crate::sql_aux_funcs::ConnectionBase::Sqlite
-                    | crate::sql_aux_funcs::ConnectionBase::Odbc => f.conn.connection.unwrap().clone(),
+                    Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.unwrap().clone(),
+                    None => { String::from("None") },
                 };
 
                 match attempt_query(&qry[..], &db_name[..]) {
@@ -291,18 +291,18 @@ fn init_gui<'a>() {
                 };
             }
             Some(Message::FillGrid(table_index)) => {
-                if f.conn.result_code == -1 {
+                if f.conn.result_code == Some(-1) {
                     //check that the query didn't error out
                     match f.conn.result_details {
                         Some(details) => println!("{}", details),
                         None => println!("Empty error message"),
                     }
-                    f.conn.result_code = 0;
+                    f.conn.result_code = None;
                     f.conn.result_details = None;
                 }
 
                 //then fill the grid with the recordset because it passed
-                if f.conn.result_code == 1 {
+                if f.conn.result_code == Some(1) {
                     let page_index: usize = page_input.value().parse::<usize>().unwrap();
                     let table: &mut SmartTable = match table_index {
                         1 => &mut record_grid,
@@ -313,7 +313,7 @@ fn init_gui<'a>() {
                     //slice the recordset into a single page
                     //fill the grid with only <= 50 records
                     let page_of_records: Vec<Record<sqlite::Value>> =
-                        f.conn.record_set.fetch_page_of_records(page_index);
+                        f.conn.record_set.unwrap().fetch_page_of_records(page_index);
                     fill_table(&f.conn.record_set, table, page_of_records);
                 }
             }
@@ -330,19 +330,19 @@ fn init_gui<'a>() {
                 match packet {
                     Some(0) => match select_file(&f) {
                         Ok(selected_file) => {
-                            f.conn.connection = Connectable::Sqlite3(selected_file)
+                            f.conn.connection = Some(String::from(selected_file));
                         }
                         Err(E) => println!("Invalid operation during file selection, {E:?}"),
                     },
                     Some(1) => {
                         let conn_str: String = input_conn_str();
-                        f.conn.connection = Connectable::Odbc(conn_str);
+                        f.conn.connection = Some(String::from(conn_str));
                         println!("odbc selected");
-                        f.conn.record_set = RecordSet::<String, odbc::ffi::SqlDataType>::default();
+                        f.conn.record_set = Some(RecordSet::default());
                     }
                     _ => (),
                 }
-                if f.conn.connection != Connectable::None {
+                if f.conn.connection != None {
                     tables_butn.do_callback();
                 }
             }
@@ -395,7 +395,7 @@ fn attempt_query(
 fn attempt_query(
     textinput: &str,
     db_name: &str,
-) -> std::result::Result<RecordSet<SqlData, SqlType, SqlError>, SqlError> {
+) -> Result<RecordSet, SqlError> {
     let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
     result
 }
@@ -410,7 +410,7 @@ fn clear_table(table: &mut SmartTable) {
 }
 
 fn add_columns_to_table<'a>(
-    record_set: &'a crate::sql_aux_funcs::RecordSet<SqlData, SqlType, SqlError>,
+    record_set: &'a RecordSet,
     table: &mut SmartTable,
 ) -> HashMap<&'a String, i32> {
     let mut col_width_map: HashMap<&'a String, i32> =
@@ -428,7 +428,7 @@ fn add_columns_to_table<'a>(
 }
 
 fn resize_columns<'a>(
-    record_set: &'a crate::sql_aux_funcs::RecordSet<SqlData, SqlType, SqlError>,
+    record_set: &'a RecordSet,
     col_width_map: &mut HashMap<&'a String, i32>,
     table: &mut SmartTable,
 ) {
@@ -492,9 +492,9 @@ fn resize_columns<'a>(
 }
 
 fn fill_table(
-    record_set: &crate::sql_aux_funcs::RecordSet<SqlData, SqlType, SqlError>,
+    record_set: &RecordSet,
     table: &mut SmartTable,
-    paged_records: Vec<Record<sqlite::Value>>,
+    paged_records: Vec<Record>,
 ) {
     clear_table(table);
     let mut col_width_map: HashMap<&String, i32> = add_columns_to_table(&record_set, table);
@@ -547,7 +547,7 @@ where
 }
 
 fn spawn_observer(
-    f: &mut FltkHost<u8, u8>,
+    f: &mut FltkHost,
     outputs: &mut Vec<MultilineOutput>,
     workers: &mut Vec<JoinHandle<()>>,
     sndr: Sender<Message>,
@@ -610,7 +610,7 @@ fn spawn_observer(
     f.fltk_windows[1].show();
 }
 
-fn select_file<T, U>(f: &FltkHost<T, U>) -> Result<String, std::io::Error> {
+fn select_file(f: &FltkHost) -> Result<String, std::io::Error> {
     let mut fi =
         dialog::FileChooser::new(".", "*.db", dialog::FileChooserType::Single, "Select a DB");
     let center_of_screen: (i32, i32) = center();

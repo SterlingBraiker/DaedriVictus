@@ -1,7 +1,7 @@
 /* --> Imports */
 
-use crate::sql_aux_funcs::Translate;
-use crate::sql_aux_funcs::{Record, RecordSet};
+//use crate::sql_aux_funcs::Translate;
+use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlType, SqlError, Translate};
 pub use sqlite::{
     Bindable, BindableWithIndex, Connection, Error, State, Statement, Type,
     Value::{
@@ -16,17 +16,7 @@ use std::io;
 /* <-- Imports */
 /* --> Structs */
 
-pub struct Sqlite3error {
-    pub wrapped_error: Option<sqlite::Error>,
-}
 
-impl Default for Sqlite3error {
-    fn default() -> Self {
-        Self {
-            wrapped_error: None,
-        }
-    }
-}
 
 /* <-- Structs */
 /* --> Enums */
@@ -37,8 +27,11 @@ impl Default for Sqlite3error {
 pub fn raw_query(
     db_name: String,
     query: String,
-) -> Result<RecordSet<sqlite::Value, sqlite::Type, Sqlite3error>, Option<sqlite::Error>> {
-    let db_handle = sqlite::open(&db_name)?;
+) -> Result<RecordSet, SqlError> {
+    let db_handle = match sqlite::open(&db_name) {
+        Ok(T) => { T },
+        Err(E) => {  return Err(SqlError::Sqlite(E)) },
+    };
 
     //do I need to trim the query here? Is this always a safe practice?
     // will most sql engines trim query strings by default anyway?
@@ -47,7 +40,7 @@ pub fn raw_query(
     Ok(result)
 }
 
-pub fn cli_query(db_name: String) -> Result<(), Option<sqlite::Error>> {
+pub fn cli_query(db_name: String) -> Result<(), sqlite::Error> {
     //start the db
     let db_handle = sqlite::open(&db_name)?;
     let confirmation = &String::from("y")[..];
@@ -65,7 +58,15 @@ pub fn cli_query(db_name: String) -> Result<(), Option<sqlite::Error>> {
             .read_line(&mut query)
             .expect("Failed to read line.");
 
-        let result = select_from(&db_handle, query.trim())?;
+        let result = match select_from(&db_handle, query.trim()) {
+            Ok(T) => { T },
+            Err(E) => { 
+                match E {
+                    SqlError::Sqlite(Er) => { return Err(Er) } ,
+                    _ => { panic!("How did a different kind of error get in here?") },
+                };
+            },
+        };
 
         let csv_printout: String = print_results(&result);
         println!("\n==============\nDone printing.\nSave results?(Y/N)");
@@ -113,38 +114,51 @@ fn build_db(db_handle: &sqlite::Connection) -> Result<(), sqlite::Error> {
 fn select_from(
     db_handle: &sqlite::Connection,
     query: &str,
-) -> Result<RecordSet<sqlite::Value, sqlite::Type, Sqlite3error>, Option<sqlite::Error>> {
-    let mut stmt = db_handle.prepare(query)?;
+) -> Result<RecordSet, SqlError> {
+    let mut stmt = match db_handle.prepare(query) {
+        Ok(T) => { T },
+        Err(E) => { return Err(SqlError::Sqlite(E)) },
+    };
     //bind parameters function call here
 
     //construct recordset
-    let mut record_set: RecordSet<sqlite::Value, sqlite::Type, Sqlite3error> = RecordSet {
+    let mut record_set: RecordSet = RecordSet {
         column_info: HashMap::new(),
         column_order: Vec::new(),
         records: Vec::new(),
-        error_interface: Sqlite3error::default(),
+        error_interface: SqlError::None,
     };
 
-    record_set.construct(&mut stmt)?;
+    record_set.construct_sqlite(&mut stmt)?;
 
     //then read recordsets from Sqlite
     while let Ok(State::Row) = stmt.next() {
         //new row available
         //create a new record object
-        let mut current_row: Record<sqlite::Value> = Record {
+        let mut current_row: Record = Record {
             columns: HashMap::new(),
+            data_type: crate::sql_aux_funcs::ConnectionBase::Sqlite,
         };
 
+
+        /* match db_handle.prepare(query) {
+        Ok(T) => { T },
+        Err(E) => { return Err(SqlError::Sqlite(E)) },
+    }; */
         //parse the columns in the row
         for (name, _) in &record_set.column_info {
             // 'name' will index the row and fetch columns
-            match stmt.read::<Option<sqlite::Value>, _>(&name[..])? {
+            let read_value = match stmt.read::<Option<sqlite::Value>, _>(&name[..]) {
+                Ok(T) => { T },
+                Err(E) => { return Err(SqlError::Sqlite(E)) },
+            };
+            match read_value {
                 //fetched data from a column
                 Some(value) => {
                     //'value' is the data in the column
 
                     //add value to the Record object
-                    current_row.add(name.clone(), value.clone());
+                    current_row.add(name.clone(), SqlData::Sqlite(value.clone()));
                 }
 
                 //no data found in the column? not even a SqliteNull?
@@ -157,7 +171,7 @@ fn select_from(
     Ok(record_set)
 }
 
-pub fn print_results(record_set: &RecordSet<sqlite::Value, sqlite::Type, Sqlite3error>) -> String {
+pub fn print_results(record_set: &RecordSet) -> String {
     println!("Printing records\n==============\n");
     let mut text_payload: String = String::new();
     let mut current_line: String = String::new();
