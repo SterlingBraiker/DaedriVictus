@@ -24,23 +24,21 @@ pub struct Connection {
     pub result_code: Option<i32>,
     pub result_details: Option<String>,
     pub connection_type: Option<ConnectionBase>,
+    pub error_interface: Option<SqlError>,
 }
 
-
-
 // Handles all results (records, errors)
-
+#[derive(Clone)]
 pub struct RecordSet {
     pub column_info: HashMap<String, SqlType>,
     pub column_order: Vec<String>,
     pub records: Vec<Record>,
-    pub error_interface: SqlError,
 }
 
 #[derive(Clone, Default)]
 pub struct Record {
-    pub columns: HashMap<String, SqlData>,
-    pub data_type: ConnectionBase,
+    pub columns: HashMap<String, Option<SqlData>>,
+    pub data_type: Option<ConnectionBase>,
 }
 
 #[derive(Clone)]
@@ -49,6 +47,7 @@ pub enum SqlData {
     Odbc(String),
 }
 
+#[derive(Clone)]
 pub enum SqlType {
     Sqlite(sqlite::Type),
     Odbc(odbc::ffi::SqlDataType),
@@ -63,12 +62,10 @@ pub enum SqlError {
 }
 
 // What kind of DB are we connecting to?
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub enum ConnectionBase {
     Odbc,
     Sqlite,
-    #[default]
-    None,
 }
 
 impl RecordSet {
@@ -154,7 +151,6 @@ impl RecordSet {
             column_info: HashMap::<String, SqlType>::new(),
             column_order: Vec::<String>::new(),
             records: Vec::<Record>::new(),
-            error_interface: SqlError::default(),
         }
     }
 }
@@ -206,7 +202,13 @@ impl RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord> {
 
 impl Record {
     pub fn add(&mut self, key: String, val: SqlData) {
-        self.columns.insert(key, val);
+        self.columns.insert(key, Some(val));
+    }
+    // only being used for odbc currently
+    pub fn construct(&mut self, column_info: &HashMap<String, SqlType>) {
+        for key in column_info.keys() {
+            self.columns.insert(key.clone(), None); // refactor this to actually use the SqlType and point to the real data types?
+        }
     }
 }
 
@@ -225,11 +227,12 @@ impl Connection {
         self.result_code = Some(1 as i32);
     }
 
-    pub fn assemble_err(&mut self, the_error: SqlError) -> () {
+    pub fn assemble_err(&mut self, _the_error: SqlError) -> () {
         self.result_code = Some(-1 as i32);
-        self.result_details = match self {
-            Odbc => Some(String::from("Text")),
-            Sqlite => Some(String::from("Text")),
+        self.result_details = match self.connection_type.clone() {
+            Some(ConnectionBase::Odbc) => Some(String::from("Text")),
+            Some(ConnectionBase::Sqlite) => Some(String::from("Text")),
+            None => { None }
             //            Some(crate::sql_aux_funcs::SqlError::Odbc(ref E)) => Some(E.message_string().clone()),
             //            Some(crate::sql_aux_funcs::SqlError::Sqlite(ref E)) => E.message.clone(),
             //            None => {}
@@ -262,7 +265,7 @@ impl Translate for SqlData {
                 }
                 SqliteNull => payload.push_str("Null"),
             },
-            SqlData::Odbc(val) => { },
+            SqlData::Odbc(_val) => { },
         }
 
         payload

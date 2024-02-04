@@ -81,6 +81,7 @@ fn init_gui<'a>() {
             result_code: None,
             result_details: None,
             connection_type: None,
+            error_interface: None,
         },
     };
 
@@ -250,8 +251,8 @@ fn init_gui<'a>() {
     while f.fltk_app.wait() {
         match main_app_receiver.recv() {
             Some(Message::Query(qry)) => {
-                let db_name = match f.conn.connection_type {
-                    Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.unwrap().clone(),
+                let db_name = match &f.conn.connection_type {
+                    Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
                     None => { String::from("None") },
                 };
 
@@ -312,9 +313,12 @@ fn init_gui<'a>() {
 
                     //slice the recordset into a single page
                     //fill the grid with only <= 50 records
-                    let page_of_records: Vec<Record<sqlite::Value>> =
-                        f.conn.record_set.unwrap().fetch_page_of_records(page_index);
-                    fill_table(&f.conn.record_set, table, page_of_records);
+                    //let page_of_records: Vec<Record> = f.conn.record_set.unwrap().fetch_page_of_records(page_index);
+                    let page_of_records: Vec<Record> = match f.conn.record_set {
+                        Some(ref rs) => rs.records.clone(),
+                        None => { Vec::<Record>::new() },
+                    };
+                    fill_table(&f.conn.record_set.clone().unwrap(), table, page_of_records);
                 }
             }
             Some(Message::ClearGrid) => {
@@ -442,39 +446,45 @@ fn resize_columns<'a>(
     for record in &record_set.records {
         for v in &record_set.column_order {
             match record.columns.get(v).unwrap() {
-                sqlite3::SqliteFloat(value) => {
-                    let value_stringified = &value.to_string()[..];
-                    let previous_size = col_width_map.get(v).copied().unwrap();
-                    if (value_stringified.len() as i32) > (previous_size as i32) {
-                        col_width_map.insert(v, value_stringified.len().clone() as i32);
+                Some(SqlData::Sqlite(value)) => {
+                    match value {
+                        sqlite3::SqliteFloat(value) => {
+                            let value_stringified = &value.to_string()[..];
+                            let previous_size = col_width_map.get(v).copied().unwrap();
+                            if (value_stringified.len() as i32) > (previous_size as i32) {
+                                col_width_map.insert(v, value_stringified.len().clone() as i32);
+                            }
+                        }
+                        sqlite3::SqliteInteger(value) => {
+                            let value_stringified = &value.to_string()[..];
+                            let previous_size = col_width_map.get(v).copied().unwrap();
+                            if (value_stringified.len() as i32) > (previous_size as i32) {
+                                col_width_map.insert(v, value_stringified.len().clone() as i32);
+                            }
+                        }
+                        sqlite3::SqliteString(value) => {
+                            let value_stringified = &value.to_string()[..];
+                            let previous_size = col_width_map.get(v).copied().unwrap();
+                            if (value_stringified.len() as i32) > (previous_size as i32) {
+                                col_width_map.insert(v, value_stringified.len().clone() as i32);
+                            }
+                        }
+                        sqlite3::SqliteNull => (),
+                        sqlite3::SqliteBinary(value) => {
+                            let mut x = String::new();
+                            for element in value {
+                                x.push_str(&element.to_string()[..])
+                            }
+                            let value_stringified = &x[..];
+                            let previous_size = col_width_map.get(v).copied().unwrap();
+                            if (value_stringified.len() as i32) > (previous_size as i32) {
+                                col_width_map.insert(v, value_stringified.len().clone() as i32);
+                            }
+                        }
                     }
-                }
-                sqlite3::SqliteInteger(value) => {
-                    let value_stringified = &value.to_string()[..];
-                    let previous_size = col_width_map.get(v).copied().unwrap();
-                    if (value_stringified.len() as i32) > (previous_size as i32) {
-                        col_width_map.insert(v, value_stringified.len().clone() as i32);
-                    }
-                }
-                sqlite3::SqliteString(value) => {
-                    let value_stringified = &value.to_string()[..];
-                    let previous_size = col_width_map.get(v).copied().unwrap();
-                    if (value_stringified.len() as i32) > (previous_size as i32) {
-                        col_width_map.insert(v, value_stringified.len().clone() as i32);
-                    }
-                }
-                sqlite3::SqliteNull => (),
-                sqlite3::SqliteBinary(value) => {
-                    let mut x = String::new();
-                    for element in value {
-                        x.push_str(&element.to_string()[..])
-                    }
-                    let value_stringified = &x[..];
-                    let previous_size = col_width_map.get(v).copied().unwrap();
-                    if (value_stringified.len() as i32) > (previous_size as i32) {
-                        col_width_map.insert(v, value_stringified.len().clone() as i32);
-                    }
-                }
+                },
+                Some(SqlData::Odbc(Value)) => {},
+                None => {},
             }
         }
         sort_count -= 1;
@@ -508,11 +518,17 @@ fn fill_table(
         for v in &record_set.column_order {
             match record.columns.get(v) {
                 Some(value) => {
-                    table.set_cell_value(
-                        current_record_index,
-                        current_column_index,
-                        &value.translate()[..],
-                    );
+                    match value {
+                        Some(data) => {
+                            table.set_cell_value(
+                            current_record_index,
+                            current_column_index,
+                            &data.translate()[..],
+                            );
+                        },
+                        None => {},
+                    }
+                    
                 }
                 None => {}
             }

@@ -126,7 +126,6 @@ fn select_from(
         column_info: HashMap::new(),
         column_order: Vec::new(),
         records: Vec::new(),
-        error_interface: SqlError::None,
     };
 
     record_set.construct_sqlite(&mut stmt)?;
@@ -137,7 +136,7 @@ fn select_from(
         //create a new record object
         let mut current_row: Record = Record {
             columns: HashMap::new(),
-            data_type: crate::sql_aux_funcs::ConnectionBase::Sqlite,
+            data_type: Some(crate::sql_aux_funcs::ConnectionBase::Sqlite),
         };
 
 
@@ -193,7 +192,12 @@ pub fn print_results(record_set: &RecordSet) -> String {
         current_line.clear();
         for v in &record_set.column_order {
             match record.columns.get(v) {
-                Some(value) => current_line.push_str(&value.translate()),
+                Some(value) => {
+                    match value {
+                        Some(data) => current_line.push_str(&data.translate()),
+                        None => {},
+                    }
+                },
                 None => {}
             }
             if &v != &record_set.column_order.last().unwrap() {

@@ -18,11 +18,10 @@ pub fn entry_point(
     dsn: String,
     sql_text: String,
 ) -> Result<RecordSet, SqlError> {
-    let recordset: RecordSet<SqlData, SqlType, SqlError> = RecordSet {
+    let recordset: RecordSet = RecordSet {
         column_info: HashMap::<String, SqlType>::new(),
         column_order: Vec::new(),
-        records: Vec::<Record<SqlData>>::new(),
-        error_interface: SqlError::default(),
+        records: Vec::<Record>::new(),
     };
 
     connect(dsn, sql_text, recordset)
@@ -34,14 +33,25 @@ pub fn connect(
     recordset: RecordSet,
 ) -> Result<RecordSet, SqlError> {
     let environment: odbc::Environment<odbc::odbc_safe::Odbc3> =
-        create_environment_v3().map_err(|e| e.unwrap())?;
+        match create_environment_v3().map_err(|e| e.unwrap()) {
+            Ok(T) => { T },
+            Err(E) => { return Err(SqlError::Odbc(E)) },
+    };
 
-    let conn = environment.connect_with_connection_string(
+    let conn = match environment.connect_with_connection_string(
         //"Driver=Microsoft Access Text Driver (*.txt, *.csv);Dbq=D:\\;Extensions=asc,csv,tab,txt;",
         &dsn,
-    )?;
+    ) {
+        Ok(T) => { T },
+        Err(E) => { return Err(SqlError::Odbc(E)) },
+    };
 
-    execute_statement(&conn, recordset, sql_text)?
+    let result = match execute_statement(&conn, recordset, sql_text) {
+        Ok(T) => { Ok(T) },
+        Err(E) => { Err(E) },
+    };
+
+    result
 }
 
 fn execute_statement<'env>(
@@ -50,33 +60,54 @@ fn execute_statement<'env>(
     sql_text: String,
 ) -> Result<RecordSet, SqlError> {
     //add a lifetime to the recordset which originates from outside of entry_point()
-    let stmt = Statement::with_parent(conn)?;
+    let stmt = match Statement::with_parent(conn) {
+        Ok(T) => { T },
+        Err(E) => { return Err(SqlError::Odbc(E)) },
+    };
 
-    match stmt.exec_direct(&sql_text)? {
+    let results = match stmt.exec_direct(&sql_text) {
+        Ok(T) => { T },
+        Err(E) => { return Err(SqlError::Odbc(E)) },
+    };
+
+    match results {
         Data(mut stmt) => {
-            recordset.construct(&mut stmt)?;
-            let cols = stmt.num_result_cols()?;
-            while let Some(mut cursor) = stmt.fetch()? {
+            recordset.construct_odbc(&mut stmt)?;
+            let cols = match stmt.num_result_cols() {
+                Ok(T) => { T },
+                Err(E) => { return Err(SqlError::Odbc(E)) },
+            };
+
+            //let mut trigger: bool = True;
+            while let Some(mut cursor) = match stmt.fetch() {
+                Ok(T) => { T },
+                Err(_) => { None },
+            } {
                 //.fetch() grabs another row of data. create a record here
                 //let mut consumption: Vec<String> = Vec::with_capacity(cols as usize);
 
-                let mut rec: Record<String> = Record {
+                let mut rec: Record = Record {
                     columns: HashMap::new(),
-                    data_type: crate::sql_aux_funcs::ConnectionBase::Odbc,
+                    data_type: Some(crate::sql_aux_funcs::ConnectionBase::Odbc),
                 };
                 rec.construct(&recordset.column_info);
 
                 for i in 1..(cols + 1) {
-                    match cursor.get_data::<&str>(i as u16)? {
+                    let result = match cursor.get_data::<&str>(i as u16) {
+                        Ok(T) => { T },
+                        Err(E) => { return Err(SqlError::Odbc(E)) },
+                    };
+                    
+                    match result {
                         Some(val) => rec.add(
                             recordset.column_order.get(i as usize).unwrap().clone(),
-                            String::from(val),
+                            SqlData::Odbc(String::from(val)),
                         ),
                         None => rec.add(
                             recordset.column_order.get(i as usize).unwrap().clone(),
-                            String::from("Null"),
+                            SqlData::Odbc(String::from("Null")),
                         ),
-                    }
+                    };
                 }
                 recordset.add(rec);
             }
