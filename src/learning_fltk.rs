@@ -239,9 +239,6 @@ fn init_gui<'a>() {
             children_bounds.2,
             children_bounds.3,
         );
-        //refactored to use *.center_screen()
-        //        let (x, y): (i32, i32) = center();
-        //        f.fltk_windows[0].set_pos(x, y - (760 / 2));
     }
 
     let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
@@ -313,7 +310,6 @@ fn init_gui<'a>() {
 
                     //slice the recordset into a single page
                     //fill the grid with only <= 50 records
-                    //let page_of_records: Vec<Record> = f.conn.record_set.unwrap().fetch_page_of_records(page_index);
                     let page_of_records: Vec<Record> = match f.conn.record_set {
                         Some(ref rs) => rs.records.clone(),
                         None => { Vec::<Record>::new() },
@@ -400,7 +396,8 @@ fn attempt_query(
     textinput: &str,
     db_name: &str,
 ) -> Result<RecordSet, SqlError> {
-    let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
+    //let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
+    let result = crate::sqlite3_interface::raw_query(String::from(db_name), String::from(textinput));
     result
 }
 
