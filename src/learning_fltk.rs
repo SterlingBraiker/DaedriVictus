@@ -1,11 +1,7 @@
 /* --> Imports */
 
 use std::{
-    collections::HashMap,
-    sync::{mpsc, Arc, Mutex},
-    thread,
-    thread::Builder,
-    thread::JoinHandle,
+    collections::HashMap, env::join_paths, sync::{mpsc, Arc, Mutex}, thread::{self, Builder, JoinHandle}
 };
 
 use fltk::{
@@ -37,13 +33,19 @@ use rand::{thread_rng, Rng};
 
 #[derive(Clone)]
 pub enum Message {
-    Query(String),
+    Query(String, QueryFlag),
     FillGrid(i32),
     Save,
     ClearGrid,
     RandomNumber(usize, u64),
     LaunchObserver,
     SqlServerPacket(Option<i32>),
+}
+
+#[derive(Clone)]
+enum QueryFlag {
+    Tables,
+    UserDefined,
 }
 
 /* <-- Enums */
@@ -176,7 +178,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
 
     query_butn.set_callback({
         move |_| {
-            query_butn_sndr.send(Message::Query(textinput.value().clone()));
+            query_butn_sndr.send(Message::Query(textinput.value().clone(), QueryFlag::UserDefined));
             query_butn_sndr.send(Message::FillGrid(1));
         }
     });
@@ -195,7 +197,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
 
     tables_butn.set_callback({
         move |_| {
-            tables_butn_sndr.send(Message::Query(String::from(SQLITE_TABLES)));
+            tables_butn_sndr.send(Message::Query(String::from(""), QueryFlag::Tables));
             tables_butn_sndr.send(Message::FillGrid(2));
         }
     });
@@ -250,11 +252,20 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     // enter the event loop which responds to channel messages
     while f.fltk_app.wait() {
         match main_app_receiver.recv() {
-            Some(Message::Query(qry)) => {
+            Some(Message::Query(mut qry, query_flag)) => {
                 let db_name = match f.conn.connection_type.as_ref() {
                     Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
                     None => { String::from("None") },
                 };
+                
+                match query_flag {
+                    QueryFlag::UserDefined => {},
+                    QueryFlag::Tables => qry = match f.conn.connection_type.as_ref() {
+                        Some(&ConnectionBase::Sqlite) => { String::from(SQLITE_TABLES.clone()) },
+                        Some(&ConnectionBase::Odbc) => { String::from("") },
+                        None => { String::from("") },
+                    }
+                }
 
                 match attempt_query(&qry[..], &db_name[..], f.conn.connection_type.as_ref()) {
                     Ok(value) => {

@@ -227,16 +227,9 @@ impl Connection {
         self.result_code = Some(1 as i32);
     }
 
-    pub fn assemble_err(&mut self, _the_error: SqlError) -> () {
+    pub fn assemble_err(&mut self, the_error: SqlError) -> () {
         self.result_code = Some(-1 as i32);
-        self.result_details = match self.connection_type.clone() {
-            Some(ConnectionBase::Odbc) => Some(String::from("Text")),
-            Some(ConnectionBase::Sqlite) => Some(String::from("Text")),
-            None => { None }
-            //            Some(crate::sql_aux_funcs::SqlError::Odbc(ref E)) => Some(E.message_string().clone()),
-            //            Some(crate::sql_aux_funcs::SqlError::Sqlite(ref E)) => E.message.clone(),
-            //            None => {}
-        }
+        self.error_interface = Some(the_error);
     }
 }
 
