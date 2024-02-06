@@ -59,19 +59,22 @@ struct FltkHost {
 /* <-- Structs */
 /* --> Const */
 
-//static TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
-static TABLES: &str = "select * from results.csv;";
+static ODBC_TEST_TABLES: &str = "select * from results.csv;";
+static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
 
 /* <-- Const */
 /* --> Functions */
 
-pub fn entry_point() {
-    init_gui();
+pub fn entry_point() -> Result<(), SqlError> {
+    match init_gui() {
+        Ok(_) => { Ok(()) },
+        Err(E) => { Err(E) },
+    }
 }
 
-fn init_gui<'a>() {
+fn init_gui<'a>() -> Result<(), SqlError> {
+    
     //testing file input dialogs
-
     let mut f: FltkHost = FltkHost {
         fltk_app: App::default().with_scheme(Scheme::Oxy),
         fltk_windows: Vec::new(),
@@ -192,7 +195,7 @@ fn init_gui<'a>() {
 
     tables_butn.set_callback({
         move |_| {
-            tables_butn_sndr.send(Message::Query(String::from(TABLES)));
+            tables_butn_sndr.send(Message::Query(String::from(SQLITE_TABLES)));
             tables_butn_sndr.send(Message::FillGrid(2));
         }
     });
@@ -248,12 +251,12 @@ fn init_gui<'a>() {
     while f.fltk_app.wait() {
         match main_app_receiver.recv() {
             Some(Message::Query(qry)) => {
-                let db_name = match &f.conn.connection_type {
+                let db_name = match f.conn.connection_type.as_ref() {
                     Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
                     None => { String::from("None") },
                 };
 
-                match attempt_query(&qry[..], &db_name[..]) {
+                match attempt_query(&qry[..], &db_name[..], f.conn.connection_type.as_ref()) {
                     Ok(value) => {
                         f.conn.assemble_rs(value);
                     }
@@ -330,12 +333,14 @@ fn init_gui<'a>() {
                 match packet {
                     Some(0) => match select_file(&f) {
                         Ok(selected_file) => {
+                            f.conn.connection_type = Some(ConnectionBase::Sqlite);
                             f.conn.connection = Some(String::from(selected_file));
                         }
                         Err(E) => println!("Invalid operation during file selection, {E:?}"),
                     },
                     Some(1) => {
                         let conn_str: String = input_conn_str();
+                        f.conn.connection_type = Some(ConnectionBase::Odbc);
                         f.conn.connection = Some(String::from(conn_str));
                         println!("odbc selected");
                         f.conn.record_set = Some(RecordSet::default());
@@ -350,6 +355,7 @@ fn init_gui<'a>() {
         }
     }
     println!("exited ui event loop");
+    Ok(())
 }
 
 /*
@@ -395,9 +401,13 @@ fn attempt_query(
 fn attempt_query(
     textinput: &str,
     db_name: &str,
+    db_interface: Option<&ConnectionBase>,
 ) -> Result<RecordSet, SqlError> {
-    //let result = crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput));
-    let result = crate::sqlite3_interface::raw_query(String::from(db_name), String::from(textinput));
+    let result = match db_interface {
+        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput)) },
+        Some(&ConnectionBase::Sqlite) => { crate::sqlite3_interface::raw_query(String::from(db_name), String::from(textinput)) },
+        None => { Err(SqlError::None) },
+    };
     result
 }
 

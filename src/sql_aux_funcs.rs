@@ -53,7 +53,7 @@ pub enum SqlType {
     Odbc(odbc::ffi::SqlDataType),
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub enum SqlError {
     Sqlite(sqlite::Error),
     Odbc(DiagnosticRecord),

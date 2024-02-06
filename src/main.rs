@@ -17,9 +17,8 @@ mod sqlite3_interface;
 /* <--  imports */
 /* -->  Functions */
 
-fn main() -> Result<(), sqlite::Error> {
-    learning_fltk::entry_point();
-    Ok(())
+fn main() -> Result<(), sql_aux_funcs::SqlError> {
+    learning_fltk::entry_point()
 }
 
 /* <--  Functions */
