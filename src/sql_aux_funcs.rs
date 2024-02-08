@@ -1,20 +1,11 @@
-/*
-
-    SQL library
-        Sqlite3
-        ODBC
-
-*/
+/* --> Imports */
 
 use crate::odbc_interface::*;
-
-//why am i importing this as Sqlite3Error? I have Sqlite3error defined within crate::sqlite3_interface
-//use crate::sqlite3_interface::Error as Sqlite3Error;
-
 use crate::sqlite3_interface::*;
 use odbc::*;
 use std::collections::HashMap;
 
+/* <-- Imports */
 /* --> Structs */
 
 // Connection details & reference the recordset
@@ -119,7 +110,6 @@ impl RecordSet {
         Ok(())
     }
 
-    //pub fn add(&mut self, rec: Record<sqlite::Value>) {
     pub fn add(&mut self, rec: Record) {
         self.records.push(rec);
     } //insert a record into the recordset
@@ -154,51 +144,6 @@ impl RecordSet {
         }
     }
 }
-
-/*
-impl RecordSet<String, odbc::ffi::SqlDataType, DiagnosticRecord> {
-    pub fn construct(
-        &mut self,
-        stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>,
-    ) -> std::result::Result<(), odbc::DiagnosticRecord> {
-        for col_index in 1..stmt.num_result_cols()? {
-            let col_description: ColumnDescriptor = stmt.describe_col(col_index as u16)?;
-            self.column_info.insert(
-                String::from(col_description.name.clone()),
-                col_description.data_type,
-            );
-            self.column_order
-                .push(String::from(col_description.name.clone()));
-        }
-        Ok(())
-    } //fill fields 'column_count', 'column_info'
-
-    pub fn add(&mut self, rec: Record<String>) {
-        self.records.push(rec);
-    } //insert a record into the recordset
-
-    pub fn record_count(&self) -> usize {
-        self.records.len()
-    }
-
-    pub fn column_count(&self) -> usize {
-        self.records.first().unwrap().columns.len()
-    }
-
-    pub fn fetch_page_of_records(&self, page: usize) -> Vec<Record<String>> {
-        let range_upper: usize = if (page * 50) < self.records.len() {
-            page * 50
-        } else {
-            self.records.len()
-        };
-        let range_lower: usize = if range_upper > 50 {
-            range_upper - 50
-        } else {
-            0
-        };
-        Vec::from(&self.records[range_lower..range_upper])
-    }
-} */
 
 impl Record {
     pub fn add(&mut self, key: String, val: SqlData) {
@@ -271,11 +216,4 @@ impl Translate for String {
     }
 }
 
-/*
-impl Translate for odbc_interface::odbc::OdbcType {
-    fn translate(&self) -> String {
-
-    }
-}
- */
 /* <-- Traits */

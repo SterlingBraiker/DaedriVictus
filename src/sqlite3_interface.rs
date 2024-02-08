@@ -1,6 +1,5 @@
 /* --> Imports */
 
-//use crate::sql_aux_funcs::Translate;
 use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlType, SqlError, Translate};
 pub use sqlite::{
     Bindable, BindableWithIndex, Connection, Error, State, Statement, Type,
@@ -9,9 +8,7 @@ pub use sqlite::{
         String as SqliteString,
     },
 };
-use std::collections::HashMap;
-use std::fs;
-use std::io;
+use std::{fs, io, collections::HashMap};
 
 /* <-- Imports */
 /* --> Structs */
@@ -119,8 +116,8 @@ fn select_from(
         Ok(T) => { T },
         Err(E) => { return Err(SqlError::Sqlite(E)) },
     };
-    //bind parameters function call here
 
+    //bind parameters function call here
     //construct recordset
     let mut record_set: RecordSet = RecordSet {
         column_info: HashMap::new(),
@@ -139,11 +136,6 @@ fn select_from(
             data_type: Some(crate::sql_aux_funcs::ConnectionBase::Sqlite),
         };
 
-
-        /* match db_handle.prepare(query) {
-        Ok(T) => { T },
-        Err(E) => { return Err(SqlError::Sqlite(E)) },
-    }; */
         //parse the columns in the row
         for (name, _) in &record_set.column_info {
             // 'name' will index the row and fetch columns
@@ -155,7 +147,6 @@ fn select_from(
                 //fetched data from a column
                 Some(value) => {
                     //'value' is the data in the column
-
                     //add value to the Record object
                     current_row.add(name.clone(), SqlData::Sqlite(value.clone()));
                 }

@@ -1,7 +1,8 @@
 /* --> Imports */
 
 use std::{
-    collections::HashMap, env::join_paths, sync::{mpsc, Arc, Mutex}, thread::{self, Builder, JoinHandle}
+    collections::HashMap, env::join_paths, sync::{mpsc, Arc, Mutex}, 
+    thread::{self, Builder, JoinHandle}, io::ErrorKind,
 };
 
 use fltk::{
@@ -54,7 +55,6 @@ pub enum QueryFlag {
 struct FltkHost {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
-    //conn: Connection<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>>, //expand this to use either sqlite, odbc
     conn: Connection,
 }
 
@@ -218,14 +218,19 @@ fn init_gui<'a>() -> Result<(), SqlError> {
         Some(T) => match &*T {
             "File" => {
                 let (x, y): (i32, i32) = center();
-                sql_selector_sndr.send(Message::SqlServerPacket(dialog::choice2(
+                let choice = dialog::choice2(
                     x - 200,
                     y - 100,
                     "Select a server",
                     "Sqlite",
                     "Odbc",
-                    "",
-                )))
+                    "Cancel",
+                );
+                match choice {
+                    Some(0) | Some(1) => sql_selector_sndr.send(Message::SqlServerPacket(choice)),
+                    _ => {},
+                }
+
             }
             "Option" => (),
             &_ => (),
@@ -274,22 +279,10 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                     }
                     Err(E) => {
                         f.conn.assemble_err(E);
-                        /* //this is doing unecessary operations because unwrapping is handled inside the *.assemble_err() method
-                        // at this point we should just be passing in the SqlError to its method
-                        match E {
-                            crate::sql_aux_funcs::SqlError::Sqlite(the_sqlite_error) => {
-                                let error_unwrapped = the_sqlite_error.wrapped_error.unwrap();
-                                println!("failed to submit query: {error_unwrapped:?}");
-                                f.conn.assemble_err(error_unwrapped);
-                            },
-                            Odbc(the_odbc_error) => {},
-                            None => {},
-                        }  */
                     }
                 }
             }
             Some(Message::Save) => {
-                //received a save request from qry_butn
                 let the_data: String = AuxFuncs::translateStringVecToCSV(&record_grid.data());
 
                 if the_data.len() > 0 {
@@ -402,13 +395,6 @@ fn center() -> (i32, i32) {
     let ss: (f64, f64) = fltk::app::screen_size();
     ((ss.0 / 2.0) as i32, (ss.1 / 2.0) as i32)
 }
-/*
-fn attempt_query(
-    textinput: &str,
-    db_name: &str,
-) -> Result<crate::sql_aux_funcs::RecordSet<sqlite::Value, sqlite::Type>, sqlite::Error> {
-    sqlite3::raw_query(String::from(db_name), String::from(textinput))
-} */
 
 fn attempt_query(
     textinput: &str,
@@ -654,8 +640,10 @@ fn select_file(f: &FltkHost) -> Result<String, std::io::Error> {
     while fi.shown() {
         f.fltk_app.wait();
     }
-
-    Ok(fi.value(1).unwrap())
+    match fi.value(1) {
+        Some(choice) => { Ok(choice) },
+        None => { Err(std::io::Error::new(ErrorKind::Other, "Cancelled operation")) },
+    }
 }
 
 fn input_conn_str() -> String {

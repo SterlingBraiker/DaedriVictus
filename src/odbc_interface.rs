@@ -1,5 +1,6 @@
-use crate::sql_aux_funcs::Translate;
-use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType};
+/* --> Imports */
+
+use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType, Translate};
 use odbc::ColumnDescriptor;
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, NoData,
@@ -81,9 +82,8 @@ fn execute_statement<'env>(
                 Ok(T) => { T },
                 Err(_) => { None },
             } {
-                //.fetch() grabs another row of data. create a record here
-                //let mut consumption: Vec<String> = Vec::with_capacity(cols as usize);
 
+                //.fetch() grabs another row of data. create a record here
                 let mut rec: Record = Record {
                     columns: HashMap::new(),
                     data_type: Some(crate::sql_aux_funcs::ConnectionBase::Odbc),
@@ -110,7 +110,8 @@ fn execute_statement<'env>(
                 recordset.add(rec);
             }
         },
-        NoData(_) => { /*
+        NoData(_) => { // force a null recordset here
+             /*
              let mut a: Vec<String> = Vec::new();
              let b: String = String::from("null");
              a.push(b);
