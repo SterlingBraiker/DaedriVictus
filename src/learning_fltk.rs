@@ -349,7 +349,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                             f.conn.connection = Some(String::from(selected_file));
                         }
                         Err(E) => println!("Invalid operation during file selection, {E:?}"),
-                    },
+                    }, 
                     Some(1) => { // Odbc
                         let conn_str: String = input_conn_str();
                         f.conn.connection_type = Some(ConnectionBase::Odbc);
