@@ -43,7 +43,7 @@ pub enum Message {
 }
 
 #[derive(Clone)]
-enum QueryFlag {
+pub enum QueryFlag {
     Tables,
     UserDefined,
 }
@@ -237,10 +237,11 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     f.fltk_windows[0].show();
 
     {
+        let (x, y): (i32, i32) = center();
         let children_bounds = resize_window_to_children(f.fltk_windows[0].bounds());
         f.fltk_windows[0].resize(
-            children_bounds.0,
-            children_bounds.1,
+            x - (children_bounds.2 / 2),
+            y - (children_bounds.3 / 2),
             children_bounds.2,
             children_bounds.3,
         );
@@ -261,7 +262,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                 match query_flag {
                     QueryFlag::UserDefined => {},
                     QueryFlag::Tables => qry = match f.conn.connection_type.as_ref() {
-                        Some(&ConnectionBase::Sqlite) => { String::from(SQLITE_TABLES.clone()) },
+                        Some(&ConnectionBase::Sqlite) => { String::from(SQLITE_TABLES) },
                         Some(&ConnectionBase::Odbc) => { String::from("") },
                         None => { String::from("") },
                     }
@@ -341,7 +342,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                 spawn_observer(&mut f, &mut outputs, &mut workers, main_app_sender.clone());
             }
             Some(Message::SqlServerPacket(packet)) => {
-                match packet {
+                match packet { //sqlite
                     Some(0) => match select_file(&f) {
                         Ok(selected_file) => {
                             f.conn.connection_type = Some(ConnectionBase::Sqlite);
@@ -349,7 +350,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                         }
                         Err(E) => println!("Invalid operation during file selection, {E:?}"),
                     },
-                    Some(1) => {
+                    Some(1) => { // Odbc
                         let conn_str: String = input_conn_str();
                         f.conn.connection_type = Some(ConnectionBase::Odbc);
                         f.conn.connection = Some(String::from(conn_str));

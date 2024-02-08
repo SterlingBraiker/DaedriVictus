@@ -59,7 +59,6 @@ fn execute_statement<'env>(
     mut recordset: RecordSet,
     sql_text: String,
 ) -> Result<RecordSet, SqlError> {
-    //add a lifetime to the recordset which originates from outside of entry_point()
     let stmt = match Statement::with_parent(conn) {
         Ok(T) => { T },
         Err(E) => { return Err(SqlError::Odbc(E)) },
@@ -78,7 +77,6 @@ fn execute_statement<'env>(
                 Err(E) => { return Err(SqlError::Odbc(E)) },
             };
 
-            //let mut trigger: bool = True;
             while let Some(mut cursor) = match stmt.fetch() {
                 Ok(T) => { T },
                 Err(_) => { None },
@@ -111,7 +109,7 @@ fn execute_statement<'env>(
                 }
                 recordset.add(rec);
             }
-        }
+        },
         NoData(_) => { /*
              let mut a: Vec<String> = Vec::new();
              let b: String = String::from("null");
@@ -119,8 +117,9 @@ fn execute_statement<'env>(
              recordset.add(b);
               */
         }
+
     }
     Ok(recordset)
 }
-
+ 
 /* <-- Functions */
