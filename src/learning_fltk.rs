@@ -61,7 +61,7 @@ struct FltkHost {
 /* <-- Structs */
 /* --> Const */
 
-static ODBC_TEST_TABLES: &str = "select * from results.csv;";
+static ODBC_TEST_TABLES: &str = "select * from 'results.csv';";
 static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
 
 /* <-- Const */
@@ -263,7 +263,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                     QueryFlag::UserDefined => {},
                     QueryFlag::Tables => qry = match f.conn.connection_type.as_ref() {
                         Some(&ConnectionBase::Sqlite) => { String::from(SQLITE_TABLES) },
-                        Some(&ConnectionBase::Odbc) => { String::from("") },
+                        Some(&ConnectionBase::Odbc) => { String::from(ODBC_TEST_TABLES) },
                         None => { String::from("") },
                     }
                 }

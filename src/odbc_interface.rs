@@ -90,7 +90,7 @@ fn execute_statement<'env>(
                 };
                 rec.construct(&recordset.column_info);
 
-                for i in 1..(cols + 1) {
+                for i in 1..=cols {
                     let result = match cursor.get_data::<&str>(i as u16) {
                         Ok(T) => { T },
                         Err(E) => { return Err(SqlError::Odbc(E)) },
@@ -98,11 +98,11 @@ fn execute_statement<'env>(
                     
                     match result {
                         Some(val) => rec.add(
-                            recordset.column_order.get(i as usize).unwrap().clone(),
+                            recordset.column_order.get((i - 1) as usize).unwrap().clone(),
                             SqlData::Odbc(String::from(val)),
                         ),
                         None => rec.add(
-                            recordset.column_order.get(i as usize).unwrap().clone(),
+                            recordset.column_order.get((i - 1) as usize).unwrap().clone(),
                             SqlData::Odbc(String::from("Null")),
                         ),
                     };

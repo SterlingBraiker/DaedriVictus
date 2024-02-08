@@ -104,7 +104,7 @@ impl RecordSet {
             Err(E) => { return Err(SqlError::Odbc(E)) },
         };
         
-        for col_index in 1..num_cols {
+        for col_index in 1..=num_cols {
             let col_description: ColumnDescriptor = match stmt.describe_col(col_index as u16) {
                 Ok(T) => { T },
                 Err(E) => {  return Err(SqlError::Odbc(E)) },
@@ -258,7 +258,7 @@ impl Translate for SqlData {
                 }
                 SqliteNull => payload.push_str("Null"),
             },
-            SqlData::Odbc(_val) => { },
+            SqlData::Odbc(val) => { payload.push_str(val)},
         }
 
         payload
