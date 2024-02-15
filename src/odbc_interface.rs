@@ -4,10 +4,12 @@ use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType, Transl
 use odbc::ColumnDescriptor;
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, NoData,
-    Statement, Version3,
+    Statement, Version3, ResultSetState, Executed,
 };
-use std::collections::HashMap;
-use std::io;
+use std::{collections::HashMap,
+    io,
+    ptr::null_mut,
+};
 
 /* <-- Imports */
 /* --> Structs */
@@ -65,9 +67,17 @@ fn execute_statement<'env>(
         Err(E) => { return Err(SqlError::Odbc(E)) },
     };
 
-    let results = match stmt.exec_direct(&sql_text) {
-        Ok(T) => { T },
-        Err(E) => { return Err(SqlError::Odbc(E)) },
+    let results = match sql_text.clone().as_str() {
+        "ZXY" => { match get_tables(&stmt) { //this is a call to ODBC SQLFunction SQLTables
+            Ok(T) => { T }, //leaving off here for the day. Need to split this nested match statement because 'get_tables' seems to mutate the statement object, while 'exec_direct' returned a resultsetstate
+            Err(E) => { return Err(SqlError::Odbc(E)) },
+        } }, 
+        _ => { //this was a real query
+            match stmt.exec_direct(&sql_text) { 
+                Ok(T) => { T },
+                Err(E) => { return Err(SqlError::Odbc(E)) },
+            }
+        }
     };
 
     match results {
@@ -122,5 +132,17 @@ fn execute_statement<'env>(
     }
     Ok(recordset)
 }
- 
+
+fn get_tables<'a, 'b>(mut stmt: &Statement<'_, '_, odbc::Allocated, odbc::NoResult, AutocommitOn>) -> Result<(), SqlError> {
+    match stmt.tables(
+        &String::new(),
+        &String::from("dba"),
+        &String::new(),
+        &String::new(),
+    ) {
+        Ok(_) => { Ok(()) },
+        Err(E) => { Err(SqlError::Odbc(E)) },
+    }
+}
+
 /* <-- Functions */

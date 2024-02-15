@@ -61,7 +61,7 @@ struct FltkHost {
 /* <-- Structs */
 /* --> Const */
 
-static ODBC_TEST_TABLES: &str = "select * from 'results.csv';";
+static ODBC_TEST_TABLES: &str = "ZXY";
 static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
 
 /* <-- Const */
@@ -221,13 +221,13 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                 let choice = dialog::choice2(
                     x - 200,
                     y - 100,
-                    "Select a server",
-                    "Sqlite",
-                    "Odbc",
+                    "Select a server type",
                     "Cancel",
+                    "Odbc",
+                    "Sqlite",
                 );
                 match choice {
-                    Some(0) | Some(1) => sql_selector_sndr.send(Message::SqlServerPacket(choice)),
+                    Some(2) | Some(1) => sql_selector_sndr.send(Message::SqlServerPacket(choice)),
                     _ => {},
                 }
 
@@ -336,7 +336,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
             }
             Some(Message::SqlServerPacket(packet)) => {
                 match packet { //sqlite
-                    Some(0) => match select_file(&f) {
+                    Some(2) => match select_file(&f) {
                         Ok(selected_file) => {
                             f.conn.connection_type = Some(ConnectionBase::Sqlite);
                             f.conn.connection = Some(String::from(selected_file));
