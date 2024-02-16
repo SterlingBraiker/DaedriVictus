@@ -1,7 +1,7 @@
 /* --> Imports */
 
 use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType, Translate};
-use odbc::ColumnDescriptor;
+use odbc::{odbc_safe::ResultSet, ColumnDescriptor};
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, NoData,
     Statement, Version3, ResultSetState, Executed,
@@ -20,6 +20,7 @@ use std::{collections::HashMap,
 pub fn entry_point(
     dsn: String,
     sql_text: String,
+    table_name: Option<String>,
 ) -> Result<RecordSet, SqlError> {
     let recordset: RecordSet = RecordSet {
         column_info: HashMap::<String, SqlType>::new(),
@@ -27,13 +28,14 @@ pub fn entry_point(
         records: Vec::<Record>::new(),
     };
 
-    connect(dsn, sql_text, recordset)
+    connect(dsn, sql_text, recordset, table_name)
 }
 
 pub fn connect(
     dsn: String,
     sql_text: String,
     recordset: RecordSet,
+    table_name: Option<String>
 ) -> Result<RecordSet, SqlError> {
     let environment: odbc::Environment<odbc::odbc_safe::Odbc3> =
         match create_environment_v3().map_err(|e| e.unwrap()) {
@@ -49,7 +51,7 @@ pub fn connect(
         Err(E) => { return Err(SqlError::Odbc(E)) },
     };
 
-    let result = match execute_statement(&conn, recordset, sql_text) {
+    let result = match execute_statement(&conn, recordset, sql_text, table_name) {
         Ok(T) => { Ok(T) },
         Err(E) => { Err(E) },
     };
@@ -61,25 +63,30 @@ fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
     mut recordset: RecordSet,
     sql_text: String,
+    table_name: Option<String>
 ) -> Result<RecordSet, SqlError> {
     let stmt = match Statement::with_parent(conn) {
         Ok(T) => { T },
         Err(E) => { return Err(SqlError::Odbc(E)) },
     };
 
-    let results = match sql_text.clone().as_str() {
-        "ZXY" => { match get_tables(&stmt) { //this is a call to ODBC SQLFunction SQLTables
-            Ok(T) => { T }, //leaving off here for the day. Need to split this nested match statement because 'get_tables' seems to mutate the statement object, while 'exec_direct' returned a resultsetstate
-            Err(E) => { return Err(SqlError::Odbc(E)) },
-        } }, 
-        _ => { //this was a real query
+    let results: ResultSetState<'_, '_, _, AutocommitOn> = match sql_text.clone().as_str() {
+        "ZXY" | "ZXZ" => {
+            let new_stmt = match get_tables(stmt, sql_text.clone(), table_name) { //this is a call to ODBC SQLFunction SQLTables. The original Statement is passed in, consumed, and a new Statement returned (whose types change from <NoResult> to <Result>)
+                Ok(T) => { T }, 
+                Err(E) => { return Err(E) },
+            };
+
+            ResultSetState::from(Data(new_stmt)) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
+        }, 
+        _ => { 
             match stmt.exec_direct(&sql_text) { 
                 Ok(T) => { T },
                 Err(E) => { return Err(SqlError::Odbc(E)) },
-            }
-        }
+            }        
+         }
     };
-
+    
     match results {
         Data(mut stmt) => {
             recordset.construct_odbc(&mut stmt)?;
@@ -133,14 +140,39 @@ fn execute_statement<'env>(
     Ok(recordset)
 }
 
-fn get_tables<'a, 'b>(mut stmt: &Statement<'_, '_, odbc::Allocated, odbc::NoResult, AutocommitOn>) -> Result<(), SqlError> {
+fn get_tables<'a, 'b>(
+    stmt: Statement<'a, 'b, odbc::Allocated, odbc::NoResult, AutocommitOn>, 
+    keyword: String, 
+    table_name: Option<String>) 
+-> Result<Statement<'a, 'b, odbc::Allocated, odbc::HasResult, AutocommitOn>, SqlError> {
+    let (c, s, tn, tt) = match keyword.as_str() {
+        "ZXY" => {
+            (String::from(""),
+            String::from("dba"),
+            String::from(""),
+            String::from(""))
+        },
+        "ZXZ" => {
+            (String::from(""),
+            String::from("dba"),
+            String::from(table_name.unwrap()),
+            String::from(""))
+        },
+        _ => {
+            (String::from(""),
+            String::from(""),
+            String::from(""),
+            String::from(""))
+        }
+    };
+    
     match stmt.tables(
-        &String::new(),
-        &String::from("dba"),
-        &String::new(),
-        &String::new(),
+        &c,
+        &s,
+        &tn,
+        &tt,
     ) {
-        Ok(_) => { Ok(()) },
+        Ok(T) => { Ok(T) },
         Err(E) => { Err(SqlError::Odbc(E)) },
     }
 }

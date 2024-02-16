@@ -14,7 +14,7 @@ use fltk::{
     input::{Input, MultilineInput},
     menu::{MenuBar, MenuFlag, MenuItem},
     output::MultilineOutput,
-    prelude::{GroupExt, InputExt, MenuExt, WidgetBase, WidgetExt, WindowExt},
+    prelude::{GroupExt, InputExt, MenuExt, WidgetBase, WidgetExt, WindowExt, TableExt},
     window,
 };
 
@@ -34,7 +34,7 @@ use rand::{thread_rng, Rng};
 
 #[derive(Clone)]
 pub enum Message {
-    Query(String, QueryFlag),
+    Query(String, QueryFlag, FetchFlag),
     FillGrid(i32),
     Save,
     ClearGrid,
@@ -44,8 +44,14 @@ pub enum Message {
 }
 
 #[derive(Clone)]
+pub enum FetchFlag {
+    True,
+    False,
+}
+
+#[derive(Clone)]
 pub enum QueryFlag {
-    Tables,
+    Tables(u8),
     UserDefined,
 }
 
@@ -62,6 +68,7 @@ struct FltkHost {
 /* --> Const */
 
 static ODBC_TEST_TABLES: &str = "ZXY";
+static ODBC_TEST_COLUMNS: &str = "ZXZ";
 static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
 
 /* <-- Const */
@@ -117,13 +124,13 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     record_grid_group.end();
 
     let tables_grid_group: Flex = Flex::default()
-        .with_size(276, 650)
+        .with_size(276, 325)
         .right_of(&record_grid_group, 5);
 
     tables_grid_group.begin();
 
     let mut table_grid = SmartTable::default()
-        .with_size(276, 650)
+        .with_size(276, 325)
         .with_opts(TableOpts {
             rows: 20,
             cols: 1,
@@ -134,7 +141,29 @@ fn init_gui<'a>() -> Result<(), SqlError> {
             ..Default::default()
         });
 
+
     tables_grid_group.end();
+
+    let columns_grid_group: Flex = Flex::default()
+        .with_size(276, 325)
+        .below_of(&tables_grid_group, 5);
+
+
+    columns_grid_group.begin();
+
+    let mut columns_grid: SmartTable = SmartTable::default()
+        .with_size(276, 325)
+        .with_opts(TableOpts {
+            rows: 20,
+            cols: 1,
+            editable: false,
+            cell_font_size: 9,
+            header_font_size: 10,
+            cell_border_color: enums::Color::Light2,
+            ..Default::default()
+    });
+
+    columns_grid_group.end();
 
     let mut pages_butn = Button::default()
         .with_size(75, 30)
@@ -175,10 +204,11 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     let clear_butn_sndr = main_app_sender.clone();
     let observer_butn_sndr = main_app_sender.clone();
     let sql_selector_sndr = main_app_sender.clone();
+    let tables_grid_sndr = main_app_sender.clone();
 
     query_butn.set_callback({
         move |_| {
-            query_butn_sndr.send(Message::Query(textinput.value().clone(), QueryFlag::UserDefined));
+            query_butn_sndr.send(Message::Query(textinput.value().clone(), QueryFlag::UserDefined, FetchFlag::False));
             query_butn_sndr.send(Message::FillGrid(1));
         }
     });
@@ -197,7 +227,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
 
     tables_butn.set_callback({
         move |_| {
-            tables_butn_sndr.send(Message::Query(String::from(""), QueryFlag::Tables));
+            tables_butn_sndr.send(Message::Query(String::from(""), QueryFlag::Tables(2), FetchFlag::False));
             tables_butn_sndr.send(Message::FillGrid(2));
         }
     });
@@ -213,6 +243,26 @@ fn init_gui<'a>() -> Result<(), SqlError> {
             observer_butn_sndr.send(Message::LaunchObserver);
         }
     });
+
+    
+/*  //refactor the table_grid events to handle multiple kinds of events, given the code example below
+ some_widget.handle(move |widget, ev: Event| {
+        match ev {
+            Event::Push => {
+                println!("Pushed!");
+                true
+            },
+            /* other events to be handled */
+            _ => false,
+        }
+    });
+
+*/
+    table_grid.set_callback( {
+        move |_| {
+            tables_grid_sndr.send(Message::Query(String::from(""), QueryFlag::Tables(3), FetchFlag::True));
+            tables_grid_sndr.send(Message::FillGrid(3));
+    }});
 
     main_menu.set_callback(move |m| match m.choice() {
         Some(T) => match &*T {
@@ -258,22 +308,37 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     // enter the event loop which responds to channel messages
     while f.fltk_app.wait() {
         match main_app_receiver.recv() {
-            Some(Message::Query(mut qry, query_flag)) => {
+            Some(Message::Query(mut qry, query_flag, fetch_flag)) => {
                 let db_name = match f.conn.connection_type.as_ref() {
                     Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
                     None => { String::from("None") },
                 };
-                
+                let mut table_name: Option<String> = None;
+                if table_grid.get_selection() > (-1, -1, -1, -1) {
+                    table_name = match fetch_flag {
+                        FetchFlag::True => {
+                            let (row, col, _, _) = table_grid.get_selection();
+                            Some(table_grid.cell_value(row, col))
+                        },
+                        FetchFlag::False => { None }
+                    };
+                };
                 match query_flag {
                     QueryFlag::UserDefined => {},
-                    QueryFlag::Tables => qry = match f.conn.connection_type.as_ref() {
+                    QueryFlag::Tables(table_index) => qry = match f.conn.connection_type.as_ref() {
                         Some(&ConnectionBase::Sqlite) => { String::from(SQLITE_TABLES) },
-                        Some(&ConnectionBase::Odbc) => { String::from(ODBC_TEST_TABLES) },
+                        Some(&ConnectionBase::Odbc) => { 
+                            match table_index {
+                                2 => { String::from(ODBC_TEST_TABLES) },
+                                3 => { String::from(ODBC_TEST_COLUMNS) },
+                                _ => { String::new() },
+                            }
+                        },
                         None => { String::from("") },
                     }
                 }
 
-                match attempt_query(&qry[..], &db_name[..], f.conn.connection_type.as_ref()) {
+                match attempt_query(&qry[..], &db_name[..], f.conn.connection_type.as_ref(), table_name) {
                     Ok(value) => {
                         f.conn.assemble_rs(value);
                     }
@@ -281,7 +346,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                         f.conn.assemble_err(E);
                     }
                 }
-            }
+            },
             Some(Message::Save) => {
                 let the_data: String = AuxFuncs::translateStringVecToCSV(&record_grid.data());
 
@@ -295,7 +360,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                         }
                     };
                 };
-            }
+            },
             Some(Message::FillGrid(table_index)) => {
                 if f.conn.result_code == Some(-1) {
                     //check that the query didn't error out
@@ -313,6 +378,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                     let table: &mut SmartTable = match table_index {
                         1 => &mut record_grid,
                         2 => &mut table_grid,
+                        3 => &mut columns_grid,
                         _ => &mut record_grid,
                     };
 
@@ -324,16 +390,16 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                     };
                     fill_table(&f.conn.record_set.clone().unwrap(), table, page_of_records);
                 }
-            }
+            },
             Some(Message::ClearGrid) => {
                 clear_table(&mut record_grid);
-            }
+            },
             Some(Message::RandomNumber(indx, num)) => {
                 outputs[indx].set_value(&num.to_string()[..]);
-            }
+            },
             Some(Message::LaunchObserver) => {
                 spawn_observer(&mut f, &mut outputs, &mut workers, main_app_sender.clone());
-            }
+            },
             Some(Message::SqlServerPacket(packet)) => {
                 match packet { //sqlite
                     Some(2) => match select_file(&f) {
@@ -355,8 +421,8 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                 if f.conn.connection != None {
                     tables_butn.do_callback();
                 }
-            }
-            None => {}
+            },
+            None => {},
         }
     }
     println!("exited ui event loop");
@@ -400,9 +466,10 @@ fn attempt_query(
     textinput: &str,
     db_name: &str,
     db_interface: Option<&ConnectionBase>,
+    table_name: Option<String>,
 ) -> Result<RecordSet, SqlError> {
     let result = match db_interface {
-        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput)) },
+        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput), table_name) },
         Some(&ConnectionBase::Sqlite) => { crate::sqlite3_interface::raw_query(String::from(db_name), String::from(textinput)) },
         None => { Err(SqlError::None) },
     };
