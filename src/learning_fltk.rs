@@ -77,18 +77,12 @@ pub fn entry_point() -> Result<(), SqlError> {
 
 fn init_gui<'a>() -> Result<(), SqlError> {
     
-    //testing file input dialogs
-    let mut f: FltkHost = FltkHost {
-        fltk_app: App::default().with_scheme(Scheme::Oxy),
-        fltk_windows: Vec::new(),
-        conn: Connection {
-            record_set: None,
-            connection: None,
-            result_code: None,
-            result_details: None,
-            connection_type: None,
-            error_interface: None,
-        },
+    // begin migrating gui construction to create_gui()
+    // utilize the method *.with_id() to assign &str id's to each widget
+    // and widgets can be referenced later with *.widget_from_id(&str)
+    let mut f: FltkHost = match create_gui() {
+        Ok(fltk_host) => { fltk_host },
+        Err(_) => panic!("Error initializing GUI")
     };
 
     // create SQL window
@@ -407,6 +401,22 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     }
     println!("exited ui event loop");
     Ok(())
+}
+
+fn create_gui<'a>() -> Result<FltkHost, SqlError> {
+    let f = FltkHost {
+        fltk_app: App::default().with_scheme(Scheme::Oxy),
+        fltk_windows: Vec::new(),
+        conn: Connection {
+            record_set: None,
+            connection: None,
+            result_code: None,
+            result_details: None,
+            connection_type: None,
+            error_interface: None,
+        },
+    };
+    Ok(f)
 }
 
 /*
