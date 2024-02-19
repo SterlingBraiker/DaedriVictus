@@ -8,7 +8,7 @@ use std::collections::HashMap;
 /* <-- Imports */
 /* --> Structs */
 
-// Connection details & reference the recordset
+// Connection details & reference the recordset and errors
 pub struct Connection {
     pub record_set: Option<RecordSet>,
     pub connection: Option<String>,
@@ -18,7 +18,7 @@ pub struct Connection {
     pub error_interface: Option<SqlError>,
 }
 
-// Handles all results (records, errors)
+// Handles all query results (records)
 #[derive(Clone)]
 pub struct RecordSet {
     pub column_info: HashMap<String, SqlType>,
@@ -52,37 +52,47 @@ pub enum SqlError {
     None,
 }
 
+#[derive(Clone)]
+pub enum QueryType {
+    SqlFunction(Request),
+    UserDefined(String), // for queries
+}
+
+#[derive(Clone)]
+pub enum Request {
+    Schema(u8), // request schemas from this catalog(index) hardcoded for now, will refactor eventually
+    Tables(u8), // request tables from this schema(index) hardcoded for now, will refactor eventually
+    Columns(String), // request columns from this tablename)
+}
+
 // What kind of DB are we connecting to?
 #[derive(Clone)]
 pub enum ConnectionBase {
     Odbc,
     Sqlite,
 }
-
 impl RecordSet {
     pub fn construct_sqlite(
         &mut self,
         stmt: &mut sqlite::Statement,
     ) -> std::result::Result<(), SqlError> {
         match stmt.next() {
-            Ok(_) => {},
-            Err(E) => { return Err(SqlError::Sqlite(E)) },
+            Ok(_) => {}
+            Err(E) => return Err(SqlError::Sqlite(E)),
         };
 
         for name in stmt.column_names() {
             let res = match stmt.column_type(&String::from(&name[..])[..]) {
-                Ok(T) => { T },
-                Err(E) => {  return Err(SqlError::Sqlite(E))  },
+                Ok(T) => T,
+                Err(E) => return Err(SqlError::Sqlite(E)),
             };
-            self.column_info.insert(
-                String::from(&name[..]),
-                SqlType::Sqlite(res),
-            );
+            self.column_info
+                .insert(String::from(&name[..]), SqlType::Sqlite(res));
             self.column_order.push(String::from(&name[..]));
         }
         match stmt.reset() {
-            Ok(_) => { Ok(()) },
-            Err(E) => { return Err(SqlError::Sqlite(E)) },
+            Ok(_) => Ok(()),
+            Err(E) => return Err(SqlError::Sqlite(E)),
         }
     } //fill fields 'column_count', 'column_info'
 
@@ -91,14 +101,14 @@ impl RecordSet {
         stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>,
     ) -> std::result::Result<(), SqlError> {
         let num_cols: i16 = match stmt.num_result_cols() {
-            Ok(i) => { i as i16 },
-            Err(E) => { return Err(SqlError::Odbc(E)) },
+            Ok(i) => i as i16,
+            Err(E) => return Err(SqlError::Odbc(E)),
         };
-        
+
         for col_index in 1..=num_cols {
             let col_description: ColumnDescriptor = match stmt.describe_col(col_index as u16) {
-                Ok(T) => { T },
-                Err(E) => {  return Err(SqlError::Odbc(E)) },
+                Ok(T) => T,
+                Err(E) => return Err(SqlError::Odbc(E)),
             };
             self.column_info.insert(
                 String::from(col_description.name.clone()),
@@ -203,7 +213,7 @@ impl Translate for SqlData {
                 }
                 SqliteNull => payload.push_str("Null"),
             },
-            SqlData::Odbc(val) => { payload.push_str(val)},
+            SqlData::Odbc(val) => payload.push_str(val),
         }
 
         payload

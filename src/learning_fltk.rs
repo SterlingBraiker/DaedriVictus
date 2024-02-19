@@ -24,7 +24,7 @@ use fltk_table::{SmartTable, TableOpts};
 
 use crate::sql_aux_funcs::{
     Connection, Record, RecordSet, SqlData, SqlError, SqlType, Translate,
-    ConnectionBase,
+    ConnectionBase, Request, QueryType,
 };
 use crate::AuxFuncs;
 use rand::{thread_rng, Rng};
@@ -34,7 +34,7 @@ use rand::{thread_rng, Rng};
 
 #[derive(Clone)]
 pub enum Message {
-    Query(String, QueryFlag, FetchFlag),
+    Query(QueryType, FetchFlag),
     FillGrid(i32),
     Save,
     ClearGrid,
@@ -49,12 +49,6 @@ pub enum FetchFlag {
     False,
 }
 
-#[derive(Clone)]
-pub enum QueryFlag {
-    Tables(u8),
-    UserDefined,
-}
-
 /* <-- Enums */
 /* --> Structs */
 
@@ -66,11 +60,11 @@ struct FltkHost {
 
 /* <-- Structs */
 /* --> Const */
-
+/*
 static ODBC_TEST_TABLES: &str = "ZXY";
 static ODBC_TEST_COLUMNS: &str = "ZXZ";
 static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';";
-
+ */
 /* <-- Const */
 /* --> Functions */
 
@@ -208,7 +202,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
 
     query_butn.set_callback({
         move |_| {
-            query_butn_sndr.send(Message::Query(textinput.value().clone(), QueryFlag::UserDefined, FetchFlag::False));
+            query_butn_sndr.send(Message::Query(QueryType::UserDefined(textinput.value().clone()), FetchFlag::False));
             query_butn_sndr.send(Message::FillGrid(1));
         }
     });
@@ -227,7 +221,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
 
     tables_butn.set_callback({
         move |_| {
-            tables_butn_sndr.send(Message::Query(String::from(""), QueryFlag::Tables(2), FetchFlag::False));
+            tables_butn_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(2)), FetchFlag::False));
             tables_butn_sndr.send(Message::FillGrid(2));
         }
     });
@@ -260,7 +254,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
 */
     table_grid.set_callback( {
         move |_| {
-            tables_grid_sndr.send(Message::Query(String::from(""), QueryFlag::Tables(3), FetchFlag::True));
+            tables_grid_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(3)), FetchFlag::True));
             tables_grid_sndr.send(Message::FillGrid(3));
     }});
 
@@ -308,7 +302,8 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     // enter the event loop which responds to channel messages
     while f.fltk_app.wait() {
         match main_app_receiver.recv() {
-            Some(Message::Query(mut qry, query_flag, fetch_flag)) => {
+            //Some(Message::Query(mut qry, query_flag, fetch_flag)) => {
+            Some(Message::Query(mut query, fetch_flag)) => {
                 let db_name = match f.conn.connection_type.as_ref() {
                     Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
                     None => { String::from("None") },
@@ -323,22 +318,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                         FetchFlag::False => { None }
                     };
                 };
-                match query_flag {
-                    QueryFlag::UserDefined => {},
-                    QueryFlag::Tables(table_index) => qry = match f.conn.connection_type.as_ref() {
-                        Some(&ConnectionBase::Sqlite) => { String::from(SQLITE_TABLES) },
-                        Some(&ConnectionBase::Odbc) => { 
-                            match table_index {
-                                2 => { String::from(ODBC_TEST_TABLES) },
-                                3 => { String::from(ODBC_TEST_COLUMNS) },
-                                _ => { String::new() },
-                            }
-                        },
-                        None => { String::from("") },
-                    }
-                }
-
-                match attempt_query(&qry[..], &db_name[..], f.conn.connection_type.as_ref(), table_name) {
+                match attempt_query(query, &db_name[..], f.conn.connection_type.as_ref()) {
                     Ok(value) => {
                         f.conn.assemble_rs(value);
                     }
@@ -463,14 +443,13 @@ fn center() -> (i32, i32) {
 }
 
 fn attempt_query(
-    textinput: &str,
+    request: QueryType,
     db_name: &str,
     db_interface: Option<&ConnectionBase>,
-    table_name: Option<String>,
 ) -> Result<RecordSet, SqlError> {
     let result = match db_interface {
-        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), String::from(textinput), table_name) },
-        Some(&ConnectionBase::Sqlite) => { crate::sqlite3_interface::raw_query(String::from(db_name), String::from(textinput)) },
+        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), request) },
+        Some(&ConnectionBase::Sqlite) => { crate::sqlite3_interface::raw_query(String::from(db_name), request) },
         None => { Err(SqlError::None) },
     };
     result

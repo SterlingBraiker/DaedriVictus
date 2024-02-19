@@ -1,6 +1,7 @@
 /* --> Imports */
 
-use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlType, SqlError, Translate};
+use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType, Translate,
+    QueryType, Request};
 pub use sqlite::{
     Bindable, BindableWithIndex, Connection, Error, State, Statement, Type,
     Value::{
@@ -8,12 +9,10 @@ pub use sqlite::{
         String as SqliteString,
     },
 };
-use std::{fs, io, collections::HashMap};
+use std::{collections::HashMap, fs, io};
 
 /* <-- Imports */
 /* --> Structs */
-
-
 
 /* <-- Structs */
 /* --> Enums */
@@ -21,13 +20,10 @@ use std::{fs, io, collections::HashMap};
 /* <-- Enums */
 /* --> Functions */
 
-pub fn raw_query(
-    db_name: String,
-    query: String,
-) -> Result<RecordSet, SqlError> {
+pub fn raw_query(db_name: String, query: String) -> Result<RecordSet, SqlError> {
     let db_handle = match sqlite::open(&db_name) {
-        Ok(T) => { T },
-        Err(E) => {  return Err(SqlError::Sqlite(E)) },
+        Ok(T) => T,
+        Err(E) => return Err(SqlError::Sqlite(E)),
     };
 
     //do I need to trim the query here? Is this always a safe practice?
@@ -56,13 +52,15 @@ pub fn cli_query(db_name: String) -> Result<(), sqlite::Error> {
             .expect("Failed to read line.");
 
         let result = match select_from(&db_handle, query.trim()) {
-            Ok(T) => { T },
-            Err(E) => { 
+            Ok(T) => T,
+            Err(E) => {
                 match E {
-                    SqlError::Sqlite(Er) => { return Err(Er) } ,
-                    _ => { panic!("How did a different kind of error get in here?") },
+                    SqlError::Sqlite(Er) => return Err(Er),
+                    _ => {
+                        panic!("How did a different kind of error get in here?")
+                    }
                 };
-            },
+            }
         };
 
         let csv_printout: String = print_results(&result);
@@ -108,13 +106,10 @@ fn build_db(db_handle: &sqlite::Connection) -> Result<(), sqlite::Error> {
     Ok(())
 }
 
-fn select_from(
-    db_handle: &sqlite::Connection,
-    query: &str,
-) -> Result<RecordSet, SqlError> {
+fn select_from(db_handle: &sqlite::Connection, query: &str) -> Result<RecordSet, SqlError> {
     let mut stmt = match db_handle.prepare(query) {
-        Ok(T) => { T },
-        Err(E) => { return Err(SqlError::Sqlite(E)) },
+        Ok(T) => T,
+        Err(E) => return Err(SqlError::Sqlite(E)),
     };
 
     //bind parameters function call here
@@ -140,8 +135,8 @@ fn select_from(
         for (name, _) in &record_set.column_info {
             // 'name' will index the row and fetch columns
             let read_value = match stmt.read::<Option<sqlite::Value>, _>(&name[..]) {
-                Ok(T) => { T },
-                Err(E) => { return Err(SqlError::Sqlite(E)) },
+                Ok(T) => T,
+                Err(E) => return Err(SqlError::Sqlite(E)),
             };
             match read_value {
                 //fetched data from a column
@@ -183,11 +178,9 @@ pub fn print_results(record_set: &RecordSet) -> String {
         current_line.clear();
         for v in &record_set.column_order {
             match record.columns.get(v) {
-                Some(value) => {
-                    match value {
-                        Some(data) => current_line.push_str(&data.translate()),
-                        None => {},
-                    }
+                Some(value) => match value {
+                    Some(data) => current_line.push_str(&data.translate()),
+                    None => {}
                 },
                 None => {}
             }
