@@ -22,26 +22,12 @@ pub fn entry_point(
     dsn: String,
     request: QueryType,
 ) -> Result<RecordSet, SqlError> {
-    let recordset: RecordSet = RecordSet {
-        column_info: HashMap::<String, SqlType>::new(),
-        column_order: Vec::new(),
-        records: Vec::<Record>::new(),
-    };
-    match request {
-        QueryType::SqlFunction(request) => {
-
-        },
-        QueryType::UserDefined(sql_text) => {
-            connect(dsn, sql_text, recordset, table_name)
-        },
-    }
+    connect(dsn, request)
 }
 
 pub fn connect(
     dsn: String,
-    sql_text: String,
-    recordset: RecordSet,
-    table_name: Option<String>,
+    request: QueryType,
 ) -> Result<RecordSet, SqlError> {
     let environment: odbc::Environment<odbc::odbc_safe::Odbc3> =
         match create_environment_v3().map_err(|e| e.unwrap()) {
@@ -57,7 +43,7 @@ pub fn connect(
         Err(E) => return Err(SqlError::Odbc(E)),
     };
 
-    let result = match execute_statement(&conn, recordset, sql_text, table_name) {
+    let result = match execute_statement(&conn, request) {
         Ok(T) => Ok(T),
         Err(E) => Err(E),
     };
@@ -67,33 +53,40 @@ pub fn connect(
 
 fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
-    mut recordset: RecordSet,
-    sql_text: String,
-    table_name: Option<String>,
+    request: QueryType,
 ) -> Result<RecordSet, SqlError> {
     let stmt = match Statement::with_parent(conn) {
         Ok(T) => T,
         Err(E) => return Err(SqlError::Odbc(E)),
     };
 
-    let results: ResultSetState<'_, '_, _, AutocommitOn> = match sql_text.clone().as_str() {
-        "ZXY" | "ZXZ" => {
-            let new_stmt = match get_tables(stmt, sql_text.clone(), table_name) {
-                //this is a call to ODBC SQLFunction SQLTables. The original Statement is passed in, consumed, and a new Statement returned (whose types change from <NoResult> to <Result>)
+    let results: ResultSetState<'_, '_, _, AutocommitOn> = match request {
+        QueryType::SqlFunction(c) => {
+            let new_stmt = match get_tables(stmt, c) {
+            //this is a call to ODBC SQLFunction SQLTables. The original Statement is passed in, consumed, and a new Statement returned (whose types change from <NoResult> to <Result>)
                 Ok(T) => T,
                 Err(E) => return Err(E),
             };
-
             ResultSetState::from(Data(new_stmt)) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
-        }
-        _ => match stmt.exec_direct(&sql_text) {
-            Ok(T) => T,
-            Err(E) => return Err(SqlError::Odbc(E)),
+        
         },
+        QueryType::UserDefined(s) => { 
+            match stmt.exec_direct(&s) {
+                Ok(T) => T,
+                Err(E) => return Err(SqlError::Odbc(E)),
+            }
+        },
+    };
+
+    let mut recordset: RecordSet = RecordSet {
+        column_info: HashMap::<String, SqlType>::new(),
+        column_order: Vec::new(),
+        records: Vec::<Record>::new(),
     };
 
     match results {
         Data(mut stmt) => {
+            
             recordset.construct_odbc(&mut stmt)?;
             let cols = match stmt.num_result_cols() {
                 Ok(T) => T,
@@ -153,31 +146,36 @@ fn execute_statement<'env>(
 
 fn get_tables<'a, 'b>(
     stmt: Statement<'a, 'b, odbc::Allocated, odbc::NoResult, AutocommitOn>,
-    keyword: String,
-    table_name: Option<String>,
+    request: Request,
 ) -> Result<Statement<'a, 'b, odbc::Allocated, odbc::HasResult, AutocommitOn>, SqlError> {
     // define the 4 parameters to be passed into stmt.tables()
     // stmt.tables() can return information about schemas, tables, or columns
     // see msdn for more information
-    let (c, s, tn, tt) = match keyword.as_str() {
-        "ZXY" => (
-            String::from(""),
-            String::from("dba"),
-            String::from(""),
-            String::from(""),
-        ),
-        "ZXZ" => (
-            String::from(""),
-            String::from("dba"),
-            String::from(table_name.unwrap()),
-            String::from(""),
-        ),
-        _ => (
-            String::from(""),
-            String::from(""),
-            String::from(""),
-            String::from(""),
-        ),
+    let (c, s, tn, tt) = match request {
+        Request::Schema(index) => {
+            (
+                String::from(""),
+                String::from(""),
+                String::from(""),
+                String::from(""),
+            )
+        },
+        Request::Tables(_index) => {
+            (
+                String::from(""),
+                String::from("dba"),
+                String::from(""),
+                String::from(""),
+            )
+        },
+        Request::Columns(table_name) => {
+            (
+                String::from(""),
+                String::from("dba"),
+                String::from(table_name),
+                String::from(""),
+            )
+        },
     };
 
     match stmt.tables(&c, &s, &tn, &tt) {

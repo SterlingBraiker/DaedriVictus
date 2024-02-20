@@ -52,12 +52,14 @@ pub enum SqlError {
     None,
 }
 
+// if the type of query is user submitted, or a SQLFunction
 #[derive(Clone)]
 pub enum QueryType {
     SqlFunction(Request),
     UserDefined(String), // for queries
 }
 
+// holds information about the SQLTables() request. this can be expanded someday to include other SQLFunctions
 #[derive(Clone)]
 pub enum Request {
     Schema(u8), // request schemas from this catalog(index) hardcoded for now, will refactor eventually

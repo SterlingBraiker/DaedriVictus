@@ -20,12 +20,19 @@ use std::{collections::HashMap, fs, io};
 /* <-- Enums */
 /* --> Functions */
 
-pub fn raw_query(db_name: String, query: String) -> Result<RecordSet, SqlError> {
+pub fn raw_query(db_name: String, request: QueryType) -> Result<RecordSet, SqlError> {
     let db_handle = match sqlite::open(&db_name) {
         Ok(T) => T,
         Err(E) => return Err(SqlError::Sqlite(E)),
     };
 
+
+    let query  = match request {
+        QueryType::SqlFunction(_) => {
+            String::from("select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';")
+        },
+        QueryType::UserDefined(s) => { s },
+    };
     //do I need to trim the query here? Is this always a safe practice?
     // will most sql engines trim query strings by default anyway?
     let result = select_from(&db_handle, query.trim())?;
