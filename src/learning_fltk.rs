@@ -213,10 +213,14 @@ fn init_gui<'a>() -> Result<(), SqlError> {
         }
     });
 
-    tables_butn.set_callback({
-        move |_| {
-            tables_butn_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(2)), FetchFlag::False));
-            tables_butn_sndr.send(Message::FillGrid(2));
+    tables_butn.handle(move |tables_butn, ev: fltk::enums::Event| {
+        match ev {
+            fltk::enums::Event::Push => {
+                tables_butn_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(2)), FetchFlag::False));
+                tables_butn_sndr.send(Message::FillGrid(2));
+                true
+            },
+            _ => false,
         }
     });
 
@@ -246,11 +250,17 @@ fn init_gui<'a>() -> Result<(), SqlError> {
     });
 
 */
-    table_grid.set_callback( {
-        move |_| {
-            tables_grid_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(3)), FetchFlag::True));
-            tables_grid_sndr.send(Message::FillGrid(3));
-    }});
+
+    table_grid.handle(move |tables_butn, ev: fltk::enums::Event| {
+        match ev {
+            fltk::enums::Event::Push => {
+                tables_grid_sndr.send(Message::Query(QueryType::SqlFunction(Request::Columns(String::new())), FetchFlag::True));
+                tables_grid_sndr.send(Message::FillGrid(3));
+                true
+            },
+            _ => false,
+        }
+    });
 
     main_menu.set_callback(move |m| match m.choice() {
         Some(T) => match &*T {
@@ -302,15 +312,17 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                     Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
                     None => { String::from("None") },
                 };
-                let mut table_name: Option<String> = None;
+                let mut table_name: String = String::new();
                 if table_grid.get_selection() > (-1, -1, -1, -1) {
                     table_name = match fetch_flag {
                         FetchFlag::True => {
                             let (row, col, _, _) = table_grid.get_selection();
-                            Some(table_grid.cell_value(row, col))
+                            table_grid.cell_value(row, col)
                         },
-                        FetchFlag::False => { None }
+                        FetchFlag::False => { String::new() }
                     };
+                    query = QueryType::SqlFunction(Request::Columns(table_name));
+                    table_grid.unset_selection();
                 };
                 match attempt_query(query, &db_name[..], f.conn.connection_type.as_ref()) {
                     Ok(value) => {
@@ -393,7 +405,7 @@ fn init_gui<'a>() -> Result<(), SqlError> {
                     _ => (),
                 }
                 if f.conn.connection != None {
-                    tables_butn.do_callback();
+                    tables_butn.handle_event(fltk::enums::Event::Push);
                 }
             },
             None => {},

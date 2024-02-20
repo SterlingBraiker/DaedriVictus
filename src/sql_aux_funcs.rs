@@ -74,6 +74,9 @@ pub enum ConnectionBase {
     Sqlite,
 }
 impl RecordSet {
+
+    //add methods self.keep() and self.expel(), to isolate a single column in the recordset to either keep or get rid of
+
     pub fn construct_sqlite(
         &mut self,
         stmt: &mut sqlite::Statement,
