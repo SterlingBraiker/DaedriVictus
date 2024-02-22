@@ -141,6 +141,7 @@ fn execute_statement<'env>(
               */
         }
     }
+    recordset.keep(String::from("TABLE_NAME"));
     Ok(recordset)
 }
 

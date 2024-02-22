@@ -6,7 +6,7 @@ use std::{
 };
 
 use fltk::{
-    app::{channel, App, Receiver, Scheme, Sender},
+    app::{channel, App, Receiver, Scheme, Sender, WidgetId, widget_from_id},
     button::Button,
     dialog, enums,
     enums::{Color, Shortcut},
@@ -56,6 +56,370 @@ struct FltkHost {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
     conn: Connection,
+    senders: HashMap<String, Sender<Message>>,
+    receivers: HashMap<String, Receiver<Message>>,
+
+}
+
+impl FltkHost {
+    fn new() -> Self {
+        FltkHost {
+            fltk_app: App::default().with_scheme(Scheme::Oxy),
+            fltk_windows: Vec::new(),
+            conn: Connection {
+                record_set: None,
+                connection: None,
+                result_code: None,
+                result_details: None,
+                connection_type: None,
+                error_interface: None,
+            },
+            senders: HashMap::new(),
+            receivers: HashMap::new(),
+        }
+    }
+
+    fn construct(&mut self) {
+        self.fltk_windows.push(window::Window::default()
+        .with_id("sql_window")
+        .with_size(1280, 760)
+        .center_screen());
+
+        MenuBar::default().with_id("main_menu").with_size(1280, 30).with_pos(0, 0); //main menu
+        fltk::app::widget_from_id::<fltk::menu::MenuBar>("main_menu").unwrap().add_choice("File|Option");
+
+        Flex::default().with_id("record_grid_group").with_size(1000, 650).below_of(&fltk::app::widget_from_id::<fltk::menu::MenuBar>("main_menu").unwrap(), 5);
+        fltk::app::widget_from_id::<fltk::group::Flex>("record_grid_group").unwrap().begin();
+
+        SmartTable::default()
+        .size_of_parent()
+        .with_opts(TableOpts {
+            rows: 0,
+            cols: 0,
+            editable: false,
+            cell_font_size: 9,
+            header_font_size: 10,
+            cell_border_color: enums::Color::Light2,
+            ..Default::default()
+        }).with_id("record_grid");
+
+        fltk::app::widget_from_id::<fltk::group::Flex>("record_grid_group").unwrap().end();
+
+        Flex::default()
+        .with_id("tables_grid_group")
+        .with_size(276, 325)
+        .right_of(&fltk::app::widget_from_id::<fltk::group::Flex>("record_grid_group").unwrap(), 5);
+    
+        fltk::app::widget_from_id::<fltk::group::Flex>("tables_grid_group").unwrap().begin();
+    
+        SmartTable::default()
+        .with_size(276, 325)
+        .with_opts(TableOpts {
+            rows: 20,
+            cols: 1,
+            editable: false,
+            cell_font_size: 9,
+            header_font_size: 10,
+            cell_border_color: enums::Color::Light2,
+            ..Default::default()
+        }).with_id("tables_grid");
+    
+        fltk::app::widget_from_id::<fltk::group::Flex>("tables_grid_group").unwrap().end();
+
+        Flex::default()
+        .with_id("columns_grid_group")
+        .with_size(276, 325)
+        .below_of(&fltk::app::widget_from_id::<fltk::group::Flex>("tables_grid_group").unwrap(), 5);
+
+        fltk::app::widget_from_id::<fltk::group::Flex>("columns_grid_group").unwrap().end();
+
+        SmartTable::default()
+        .with_size(276, 325)
+        .with_opts(TableOpts {
+            rows: 20,
+            cols: 1,
+            editable: false,
+            cell_font_size: 9,
+            header_font_size: 10,
+            cell_border_color: enums::Color::Light2,
+            ..Default::default()
+        }).with_id("columns_grid");
+
+        fltk::app::widget_from_id::<fltk::group::Flex>("columns_grid_group").unwrap().end();
+
+        Button::default()
+            .with_size(75, 30)
+            .below_of(&fltk::app::widget_from_id::<fltk::group::Flex>("record_grid_group").unwrap(), 3)
+            .with_label("&Page")
+            .with_id("pages_butn");
+        
+        Input::default().with_id("pages_input").with_size(75, 30).below_of(&fltk::app::widget_from_id::<fltk::button::Button>("pages_butn").unwrap(), 3);
+        fltk::app::widget_from_id::<fltk::input::Input>("pages_input").unwrap().set_value("1");
+        
+        Button::default()
+            .with_id("query_butn")
+            .with_size(75, 30)
+            .right_of(&fltk::app::widget_from_id::<fltk::input::Input>("pages_input").unwrap(), 4)
+            .with_label("&Submit");
+        Button::default()
+            .with_id("clear_butn")
+            .with_size(75, 30)
+            .below_of(&fltk::app::widget_from_id::<fltk::button::Button>("query_butn").unwrap(), 3)
+            .with_label("&Clear");
+        MultilineInput::default()
+            .with_id("textinput")
+            .with_size(836, 63)
+            .right_of(&fltk::app::widget_from_id::<fltk::button::Button>("query_butn").unwrap(), 4);
+        Button::default()
+            .with_id("tables_butn")
+            .with_size(75, 63)
+            .right_of(&fltk::app::widget_from_id::<fltk::input::Input>("text_input").unwrap(), 4)
+            .with_label("&Tables");
+        Button::default()
+            .with_id("save_butn")
+            .with_size(75, 63)
+            .right_of(&fltk::app::widget_from_id::<fltk::button::Button>("tables_butn").unwrap(), 4)
+            .with_label("Sa&ve");
+        Button::default()
+            .with_id("observer_butn")
+            .with_size(75, 63)
+            .right_of(&fltk::app::widget_from_id::<fltk::button::Button>("save_butn").unwrap(), 4)
+            .with_label("Observe");
+
+
+        // event handling, message passing
+
+        {
+            let (a, b) = channel::<Message>();
+            self.senders.insert(String::from("main_app_sender"), a);
+            self.receivers.insert(String::from("main_app_receiver"), b);
+        }
+
+        {
+            let mut v: Vec<String> = Vec::new();
+            v.push(String::from("query_butn_sndr"));
+            v.push(String::from("save_butn_sndr"));
+            v.push(String::from("tables_butn_sndr"));
+            v.push(String::from("pages_butn_sndr"));
+            v.push(String::from("clear_butn_sndr"));
+            v.push(String::from("observer_butn_sndr"));
+            v.push(String::from("sql_selector_sndr"));
+            v.push(String::from("tables_grid_sndr"));
+            for i in v {
+                self.senders.insert(i, self.senders.get("main_app_sender").unwrap().clone());
+            }
+        }
+
+        fltk::app::widget_from_id::<fltk::button::Button>("query_butn").unwrap().set_callback({
+            move |_| {
+                self.senders.get("query_butn_sndr").unwrap().send(Message::Query(QueryType::UserDefined(fltk::app::widget_from_id::<fltk::input::Input>("text_input").unwrap().value().clone()), FetchFlag::False));
+                self.senders.get("query_butn_sndr").unwrap().send(Message::FillGrid(1));
+            }
+        });
+    
+        fltk::app::widget_from_id::<fltk::button::Button>("clear_butn").unwrap().set_callback({
+            move |_| {
+                self.senders.get("clear_butn_sndr").unwrap().send(Message::ClearGrid);
+            }
+        });
+    
+        fltk::app::widget_from_id::<fltk::button::Button>("save_butn").unwrap().set_callback({
+            move |_| {
+                self.senders.get("save_butn_sndr").unwrap().send(Message::Save);
+            }
+        });
+    
+        fltk::app::widget_from_id::<fltk::button::Button>("tables_butn").unwrap().handle(move |tables_butn, ev: fltk::enums::Event| {
+            match ev {
+                fltk::enums::Event::Push => {
+                    self.senders.get("tables_butn_sndr").unwrap().send(Message::Query(QueryType::SqlFunction(Request::Tables(2)), FetchFlag::False));
+                    self.senders.get("tables_butn_sndr").unwrap().send(Message::FillGrid(2));
+                    true
+                },
+                _ => false,
+            }
+        });
+    
+        fltk::app::widget_from_id::<fltk::button::Button>("pages_butn").unwrap().set_callback({
+            move |_| {
+                self.senders.get("pages_butn_sndr").unwrap().send(Message::FillGrid(1));
+            }
+        });
+    
+        fltk::app::widget_from_id::<fltk::button::Button>("observer_butn").unwrap().set_callback({
+            move |_| {
+                self.senders.get("observer_butn_sndr").unwrap().send(Message::LaunchObserver);
+            }
+        });
+
+        fltk::app::widget_from_id::<fltk::table::TableRow>("tables_grid").unwrap().handle(move |tables_grid_ref, ev: fltk::enums::Event| {
+            match ev {
+                fltk::enums::Event::Push => {
+                    if tables_grid_ref.get_selection() != (-1, -1, -1, -1) {
+                        self.senders.get("tables_grid_sndr").unwrap().send(Message::Query(QueryType::SqlFunction(Request::Columns(String::new())), FetchFlag::True));
+                        self.senders.get("tables_grid_sndr").unwrap().send(Message::FillGrid(3));
+                    }
+                    true
+                },
+                _ => false,
+            }
+        });
+    
+        fltk::app::widget_from_id::<fltk::menu::MenuBar>("main_menu").unwrap().set_callback(move |m| match m.choice() {
+            Some(T) => match &*T {
+                "File" => {
+                    let (x, y): (i32, i32) = center();
+                    let choice = dialog::choice2(
+                        x - 200,
+                        y - 100,
+                        "Select a server type",
+                        "Cancel",
+                        "Odbc",
+                        "Sqlite",
+                    );
+                    match choice {
+                        Some(2) | Some(1) => self.senders.get("sql_selector_sndr").unwrap().send(Message::SqlServerPacket(choice)),
+                        _ => {},
+                    }
+    
+                }
+                "Option" => (),
+                &_ => (),
+            },
+            None => (),
+        });
+    
+        self.fltk_windows[0].end();
+        self.fltk_windows[0].show();
+
+
+        {
+            let (x, y): (i32, i32) = center();
+            let children_bounds = resize_window_to_children(self.fltk_windows[0].bounds());
+            self.fltk_windows[0].resize(
+                x - (children_bounds.2 / 2),
+                y - (children_bounds.3 / 2),
+                children_bounds.2,
+                children_bounds.3,
+            );
+        }
+
+        let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
+        let mut outputs: Vec<MultilineOutput> = Vec::new();
+
+    }
+
+    fn event_loop(&mut self) {
+        while self.fltk_app.wait() {
+            match self.receivers.get("main_app_receiver").unwrap().recv() {
+                //Some(Message::Query(mut qry, query_flag, fetch_flag)) => {
+                Some(Message::Query(mut query, fetch_flag)) => {
+                    let db_name = match self.conn.connection_type.as_ref() {
+                        Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => self.conn.connection.clone().unwrap(),
+                        None => { String::from("None") },
+                    };
+                    if fltk::app::widget_from_id::<fltk::table::Table>("tables_grid").unwrap().get_selection() > (-1, -1, -1, -1) {
+                        let mut table_name: String = String::new();
+                        table_name = match fetch_flag {
+                            FetchFlag::True => {
+                                let (row, col, _, _) = fltk::app::widget_from_id::<fltk::table::Table>("tables_grid").unwrap().get_selection();
+                                fltk::app::widget_from_id::<fltk::table::Table>("tables_grid").unwrap().cell_value(row, col)
+                            },
+                            FetchFlag::False => { String::new() }
+                        };
+                        query = QueryType::SqlFunction(Request::Columns(table_name));
+                        fltk::app::widget_from_id::<fltk::table::Table>("tables_grid").unwrap().unset_selection();
+                    };
+                    match attempt_query(query, &db_name[..], self.conn.connection_type.as_ref()) {
+                        Ok(value) => {
+                            self.conn.assemble_rs(value);
+                        }
+                        Err(E) => {
+                            self.conn.assemble_err(E);
+                        }
+                    }
+                },
+                Some(Message::Save) => {
+                    let the_data: String = AuxFuncs::translateStringVecToCSV(&fltk::app::widget_from_id::<fltk::table::Table>("record_grid").unwrap().data());
+    
+                    if the_data.len() > 0 {
+                        match sqlite3::save_results(the_data) {
+                            Ok(_) => {
+                                save_successful();
+                            }
+                            Err(E) => {
+                                println!("{E:?}");
+                            }
+                        };
+                    };
+                },
+                Some(Message::FillGrid(table_index)) => {
+                    if self.conn.result_code == Some(-1) {
+                        //check that the query didn't error out
+                        match self.conn.result_details {
+                            Some(details) => println!("{}", details),
+                            None => println!("Empty error message"),
+                        }
+                        self.conn.result_code = None;
+                        self.conn.result_details = None;
+                    }
+    
+                    //then fill the grid with the recordset because it passed
+                    if self.conn.result_code == Some(1) {
+                        let page_index: usize = page_input.value().parse::<usize>().unwrap();
+                        let table: &mut SmartTable = match table_index {
+                            1 => &mut record_grid,
+                            2 => &mut table_grid,
+                            3 => &mut columns_grid,
+                            _ => &mut record_grid,
+                        };
+    
+                        //slice the recordset into a single page
+                        //fill the grid with only <= 50 records
+                        let page_of_records: Vec<Record> = match self.conn.record_set {
+                            Some(ref rs) => rs.records.clone(),
+                            None => { Vec::<Record>::new() },
+                        };
+                        fill_table(&self.conn.record_set.clone().unwrap(), table, page_of_records);
+                    }
+                },
+                Some(Message::ClearGrid) => {
+                    clear_table(&mut record_grid);
+                },
+                Some(Message::RandomNumber(indx, num)) => {
+                    outputs[indx].set_value(&num.to_string()[..]);
+                },
+                Some(Message::LaunchObserver) => {
+                    spawn_observer(&mut self, &mut outputs, &mut workers, main_app_sender.clone());
+                },
+                Some(Message::SqlServerPacket(packet)) => {
+                    match packet { //sqlite
+                        Some(2) => match select_file(&f) {
+                            Ok(selected_file) => {
+                                self.conn.connection_type = Some(ConnectionBase::Sqlite);
+                                self.conn.connection = Some(String::from(selected_file));
+                            }
+                            Err(E) => println!("Invalid operation during file selection, {E:?}"),
+                        }, 
+                        Some(1) => { // Odbc
+                            let conn_str: String = input_conn_str();
+                            self.conn.connection_type = Some(ConnectionBase::Odbc);
+                            self.conn.connection = Some(String::from(conn_str));
+                            println!("odbc selected");
+                            self.conn.record_set = Some(RecordSet::default());
+                        }
+                        _ => (),
+                    }
+                    if self.conn.connection != None {
+                        tables_butn.handle_event(fltk::enums::Event::Push);
+                    }
+                },
+                None => {},
+            }
+        }
+        println!("exited ui event loop");
+        Ok(f)
+    }
 }
 
 /* <-- Structs */
@@ -69,366 +433,26 @@ static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table
 /* --> Functions */
 
 pub fn entry_point() -> Result<(), SqlError> {
-    match init_gui() {
+    let mut f: FltkHost = FltkHost::new();
+
+    f.construct();
+
+    match enter_event_loop(f) {
         Ok(_) => { Ok(()) },
         Err(E) => { Err(E) },
     }
 }
 
-fn init_gui<'a>() -> Result<(), SqlError> {
+fn init_gui() -> Result<FltkHost, SqlError> {
     
     // begin migrating gui construction to create_gui()
     // utilize the method *.with_id() to assign &str id's to each widget
     // and widgets can be referenced later with *.widget_from_id(&str)
-    let mut f: FltkHost = match create_gui() {
-        Ok(fltk_host) => { fltk_host },
-        Err(_) => panic!("Error initializing GUI")
-    };
 
-    // create SQL window
-    // Create controls
-    let sql_window = window::Window::default()
-        .with_size(1280, 760)
-        .center_screen();
-    f.fltk_windows.push(sql_window);
-
-    let mut main_menu: MenuBar = MenuBar::default().with_size(1280, 30).with_pos(0, 0);
-
-    main_menu.add_choice("File|Option");
-
-    let record_grid_group: Flex = Flex::default().with_size(1000, 650).below_of(&main_menu, 5);
-
-    record_grid_group.begin();
-
-    let mut record_grid = SmartTable::default().size_of_parent().with_opts(TableOpts {
-        rows: 0,
-        cols: 0,
-        editable: false,
-        cell_font_size: 9,
-        header_font_size: 10,
-        cell_border_color: enums::Color::Light2,
-        ..Default::default()
-    });
-    record_grid_group.end();
-
-    let tables_grid_group: Flex = Flex::default()
-        .with_size(276, 325)
-        .right_of(&record_grid_group, 5);
-
-    tables_grid_group.begin();
-
-    let mut table_grid = SmartTable::default()
-        .with_size(276, 325)
-        .with_opts(TableOpts {
-            rows: 20,
-            cols: 1,
-            editable: false,
-            cell_font_size: 9,
-            header_font_size: 10,
-            cell_border_color: enums::Color::Light2,
-            ..Default::default()
-        });
-
-
-    tables_grid_group.end();
-
-    let columns_grid_group: Flex = Flex::default()
-        .with_size(276, 325)
-        .below_of(&tables_grid_group, 5);
-
-
-    columns_grid_group.begin();
-
-    let mut columns_grid: SmartTable = SmartTable::default()
-        .with_size(276, 325)
-        .with_opts(TableOpts {
-            rows: 20,
-            cols: 1,
-            editable: false,
-            cell_font_size: 9,
-            header_font_size: 10,
-            cell_border_color: enums::Color::Light2,
-            ..Default::default()
-    });
-
-    columns_grid_group.end();
-
-    let mut pages_butn = Button::default()
-        .with_size(75, 30)
-        .below_of(&record_grid_group, 3)
-        .with_label("&Page");
-    let mut page_input = Input::default().with_size(75, 30).below_of(&pages_butn, 3);
-    page_input.set_value("1");
-    let mut query_butn = Button::default()
-        .with_size(75, 30)
-        .right_of(&pages_butn, 4)
-        .with_label("&Submit");
-    let mut clear_butn = Button::default()
-        .with_size(75, 30)
-        .below_of(&query_butn, 3)
-        .with_label("&Clear");
-    let textinput = MultilineInput::default()
-        .with_size(836, 63)
-        .right_of(&query_butn, 4);
-    let mut tables_butn = Button::default()
-        .with_size(75, 63)
-        .right_of(&textinput, 4)
-        .with_label("&Tables");
-    let mut save_butn = Button::default()
-        .with_size(75, 63)
-        .right_of(&tables_butn, 4)
-        .with_label("Sa&ve");
-    let mut observer_butn = Button::default()
-        .with_size(75, 63)
-        .right_of(&save_butn, 4)
-        .with_label("Observe");
-
-    //create channels
-    let (main_app_sender, main_app_receiver) = channel::<Message>();
-    let query_butn_sndr = main_app_sender.clone();
-    let save_butn_sndr = main_app_sender.clone();
-    let tables_butn_sndr = main_app_sender.clone();
-    let pages_butn_sndr = main_app_sender.clone();
-    let clear_butn_sndr = main_app_sender.clone();
-    let observer_butn_sndr = main_app_sender.clone();
-    let sql_selector_sndr = main_app_sender.clone();
-    let tables_grid_sndr = main_app_sender.clone();
-
-    query_butn.set_callback({
-        move |_| {
-            query_butn_sndr.send(Message::Query(QueryType::UserDefined(textinput.value().clone()), FetchFlag::False));
-            query_butn_sndr.send(Message::FillGrid(1));
-        }
-    });
-
-    clear_butn.set_callback({
-        move |_| {
-            clear_butn_sndr.send(Message::ClearGrid);
-        }
-    });
-
-    save_butn.set_callback({
-        move |_| {
-            save_butn_sndr.send(Message::Save);
-        }
-    });
-
-    tables_butn.handle(move |tables_butn, ev: fltk::enums::Event| {
-        match ev {
-            fltk::enums::Event::Push => {
-                tables_butn_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(2)), FetchFlag::False));
-                tables_butn_sndr.send(Message::FillGrid(2));
-                true
-            },
-            _ => false,
-        }
-    });
-
-    pages_butn.set_callback({
-        move |_| {
-            pages_butn_sndr.send(Message::FillGrid(1));
-        }
-    });
-
-    observer_butn.set_callback({
-        move |_| {
-            observer_butn_sndr.send(Message::LaunchObserver);
-        }
-    });
-
-    
-/*  //refactor the table_grid events to handle multiple kinds of events, given the code example below
- some_widget.handle(move |widget, ev: Event| {
-        match ev {
-            Event::Push => {
-                println!("Pushed!");
-                true
-            },
-            /* other events to be handled */
-            _ => false,
-        }
-    });
-
-*/
-
-    table_grid.handle(move |tables_butn, ev: fltk::enums::Event| {
-        match ev {
-            fltk::enums::Event::Push => {
-                tables_grid_sndr.send(Message::Query(QueryType::SqlFunction(Request::Columns(String::new())), FetchFlag::True));
-                tables_grid_sndr.send(Message::FillGrid(3));
-                true
-            },
-            _ => false,
-        }
-    });
-
-    main_menu.set_callback(move |m| match m.choice() {
-        Some(T) => match &*T {
-            "File" => {
-                let (x, y): (i32, i32) = center();
-                let choice = dialog::choice2(
-                    x - 200,
-                    y - 100,
-                    "Select a server type",
-                    "Cancel",
-                    "Odbc",
-                    "Sqlite",
-                );
-                match choice {
-                    Some(2) | Some(1) => sql_selector_sndr.send(Message::SqlServerPacket(choice)),
-                    _ => {},
-                }
-
-            }
-            "Option" => (),
-            &_ => (),
-        },
-        None => (),
-    });
-
-    f.fltk_windows[0].end();
-    f.fltk_windows[0].show();
-
-    {
-        let (x, y): (i32, i32) = center();
-        let children_bounds = resize_window_to_children(f.fltk_windows[0].bounds());
-        f.fltk_windows[0].resize(
-            x - (children_bounds.2 / 2),
-            y - (children_bounds.3 / 2),
-            children_bounds.2,
-            children_bounds.3,
-        );
-    }
-
-    let mut workers: Vec<JoinHandle<()>> = Vec::<JoinHandle<()>>::new();
-    let mut outputs: Vec<MultilineOutput> = Vec::new();
-
-    // enter the event loop which responds to channel messages
-    while f.fltk_app.wait() {
-        match main_app_receiver.recv() {
-            //Some(Message::Query(mut qry, query_flag, fetch_flag)) => {
-            Some(Message::Query(mut query, fetch_flag)) => {
-                let db_name = match f.conn.connection_type.as_ref() {
-                    Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => f.conn.connection.clone().unwrap(),
-                    None => { String::from("None") },
-                };
-                let mut table_name: String = String::new();
-                if table_grid.get_selection() > (-1, -1, -1, -1) {
-                    table_name = match fetch_flag {
-                        FetchFlag::True => {
-                            let (row, col, _, _) = table_grid.get_selection();
-                            table_grid.cell_value(row, col)
-                        },
-                        FetchFlag::False => { String::new() }
-                    };
-                    query = QueryType::SqlFunction(Request::Columns(table_name));
-                    table_grid.unset_selection();
-                };
-                match attempt_query(query, &db_name[..], f.conn.connection_type.as_ref()) {
-                    Ok(value) => {
-                        f.conn.assemble_rs(value);
-                    }
-                    Err(E) => {
-                        f.conn.assemble_err(E);
-                    }
-                }
-            },
-            Some(Message::Save) => {
-                let the_data: String = AuxFuncs::translateStringVecToCSV(&record_grid.data());
-
-                if the_data.len() > 0 {
-                    match sqlite3::save_results(the_data) {
-                        Ok(_) => {
-                            save_successful();
-                        }
-                        Err(E) => {
-                            println!("{E:?}");
-                        }
-                    };
-                };
-            },
-            Some(Message::FillGrid(table_index)) => {
-                if f.conn.result_code == Some(-1) {
-                    //check that the query didn't error out
-                    match f.conn.result_details {
-                        Some(details) => println!("{}", details),
-                        None => println!("Empty error message"),
-                    }
-                    f.conn.result_code = None;
-                    f.conn.result_details = None;
-                }
-
-                //then fill the grid with the recordset because it passed
-                if f.conn.result_code == Some(1) {
-                    let page_index: usize = page_input.value().parse::<usize>().unwrap();
-                    let table: &mut SmartTable = match table_index {
-                        1 => &mut record_grid,
-                        2 => &mut table_grid,
-                        3 => &mut columns_grid,
-                        _ => &mut record_grid,
-                    };
-
-                    //slice the recordset into a single page
-                    //fill the grid with only <= 50 records
-                    let page_of_records: Vec<Record> = match f.conn.record_set {
-                        Some(ref rs) => rs.records.clone(),
-                        None => { Vec::<Record>::new() },
-                    };
-                    fill_table(&f.conn.record_set.clone().unwrap(), table, page_of_records);
-                }
-            },
-            Some(Message::ClearGrid) => {
-                clear_table(&mut record_grid);
-            },
-            Some(Message::RandomNumber(indx, num)) => {
-                outputs[indx].set_value(&num.to_string()[..]);
-            },
-            Some(Message::LaunchObserver) => {
-                spawn_observer(&mut f, &mut outputs, &mut workers, main_app_sender.clone());
-            },
-            Some(Message::SqlServerPacket(packet)) => {
-                match packet { //sqlite
-                    Some(2) => match select_file(&f) {
-                        Ok(selected_file) => {
-                            f.conn.connection_type = Some(ConnectionBase::Sqlite);
-                            f.conn.connection = Some(String::from(selected_file));
-                        }
-                        Err(E) => println!("Invalid operation during file selection, {E:?}"),
-                    }, 
-                    Some(1) => { // Odbc
-                        let conn_str: String = input_conn_str();
-                        f.conn.connection_type = Some(ConnectionBase::Odbc);
-                        f.conn.connection = Some(String::from(conn_str));
-                        println!("odbc selected");
-                        f.conn.record_set = Some(RecordSet::default());
-                    }
-                    _ => (),
-                }
-                if f.conn.connection != None {
-                    tables_butn.handle_event(fltk::enums::Event::Push);
-                }
-            },
-            None => {},
-        }
-    }
-    println!("exited ui event loop");
-    Ok(())
 }
 
-fn create_gui<'a>() -> Result<FltkHost, SqlError> {
-    let f = FltkHost {
-        fltk_app: App::default().with_scheme(Scheme::Oxy),
-        fltk_windows: Vec::new(),
-        conn: Connection {
-            record_set: None,
-            connection: None,
-            result_code: None,
-            result_details: None,
-            connection_type: None,
-            error_interface: None,
-        },
-    };
-    Ok(f)
+fn enter_event_loop(f: FltkHost) -> Result<(), SqlError> {
+
 }
 
 /*

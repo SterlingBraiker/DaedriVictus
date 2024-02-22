@@ -76,6 +76,24 @@ pub enum ConnectionBase {
 impl RecordSet {
 
     //add methods self.keep() and self.expel(), to isolate a single column in the recordset to either keep or get rid of
+    pub fn keep(
+        &mut self,
+        index: String) -> std::result::Result<(), SqlError> { // remove the columns from each record
+        for rec in &mut self.records {
+            rec.columns.retain(|k, _| *k == index);
+        }
+
+        self.reconsile(index);
+
+        Ok(())
+    }
+
+    fn reconsile(&mut self, index: String) {
+        let mut new_column_order: Vec<String> = Vec::new();
+        new_column_order.push(index.clone());
+        self.column_order = new_column_order;
+        self.column_info.retain(|k, _| *k == index)
+    }
 
     pub fn construct_sqlite(
         &mut self,
