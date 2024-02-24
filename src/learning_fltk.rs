@@ -52,16 +52,16 @@ pub enum FetchFlag {
 /* <-- Enums */
 /* --> Structs */
 
-struct FltkHost<'a> {
+struct FltkHost {
     fltk_app: App,
     fltk_windows: Vec<fltk::window::Window>,
     conn: Connection,
     sender: Option<Sender<Message>>,
     receiver: Option<Receiver<Message>>,
-    working_grid: Option<&'a mut SmartTable>,
+    smart_tables: HashMap<String, fltk_table::SmartTable>,
 }
 
-impl<'a> FltkHost<'a> {
+impl FltkHost {
     fn new() -> Self {
         FltkHost {
             fltk_app: App::default().with_scheme(Scheme::Oxy),
@@ -76,7 +76,7 @@ impl<'a> FltkHost<'a> {
             },
             receiver: None,
             sender: None,
-            working_grid: None,
+            smart_tables: HashMap::new(),
         }
     }
 
@@ -92,7 +92,7 @@ impl<'a> FltkHost<'a> {
         Flex::default().with_id("record_grid_group").with_size(1000, 650).below_of(fltk::app::widget_from_id::<fltk::menu::MenuBar>("main_menu").as_ref().unwrap(), 5);
         fltk::app::widget_from_id::<fltk::group::Flex>("record_grid_group").as_ref().unwrap().begin();
 
-        SmartTable::default()
+        self.smart_tables.insert(String::from("record_grid"), SmartTable::default()
         .size_of_parent()
         .with_opts(TableOpts {
             rows: 0,
@@ -102,7 +102,7 @@ impl<'a> FltkHost<'a> {
             header_font_size: 10,
             cell_border_color: enums::Color::Light2,
             ..Default::default()
-        }).set_id("record_grid");
+        }));
 
         fltk::app::widget_from_id::<fltk::group::Flex>("record_grid_group").as_ref().unwrap().end();
 
@@ -113,7 +113,7 @@ impl<'a> FltkHost<'a> {
     
         fltk::app::widget_from_id::<fltk::group::Flex>("tables_grid_group").as_ref().unwrap().begin();
     
-        SmartTable::default()
+        self.smart_tables.insert(String::from("tables_grid"), SmartTable::default()
         .with_size(276, 325)
         .with_opts(TableOpts {
             rows: 20,
@@ -123,7 +123,7 @@ impl<'a> FltkHost<'a> {
             header_font_size: 10,
             cell_border_color: enums::Color::Light2,
             ..Default::default()
-        }).set_id("tables_grid");
+        }));
     
         fltk::app::widget_from_id::<fltk::group::Flex>("tables_grid_group").as_ref().unwrap().end();
 
@@ -134,7 +134,7 @@ impl<'a> FltkHost<'a> {
 
         fltk::app::widget_from_id::<fltk::group::Flex>("columns_grid_group").as_ref().unwrap().begin();
 
-        SmartTable::default()
+        self.smart_tables.insert(String::from("columns_grid"), SmartTable::default()
         .with_size(276, 325)
         .with_opts(TableOpts {
             rows: 20,
@@ -144,7 +144,7 @@ impl<'a> FltkHost<'a> {
             header_font_size: 10,
             cell_border_color: enums::Color::Light2,
             ..Default::default()
-        }).set_id("columns_grid");
+        }));
 
         fltk::app::widget_from_id::<fltk::group::Flex>("columns_grid_group").as_ref().unwrap().end();
 
@@ -154,13 +154,16 @@ impl<'a> FltkHost<'a> {
             .with_label("&Page")
             .with_id("pages_butn");
         
-        Input::default().with_id("pages_input").with_size(75, 30).below_of(fltk::app::widget_from_id::<fltk::button::Button>("pages_butn").as_ref().unwrap(), 3);
+        Input::default()
+            .with_id("pages_input")
+            .with_size(75, 30)
+            .below_of(fltk::app::widget_from_id::<fltk::button::Button>("pages_butn").as_ref().unwrap(), 3);
         fltk::app::widget_from_id::<fltk::input::Input>("pages_input").as_mut().unwrap().set_value("1");
         
         Button::default()
             .with_id("query_butn")
             .with_size(75, 30)
-            .right_of(fltk::app::widget_from_id::<fltk::input::Input>("pages_input").as_ref().unwrap(), 4)
+            .right_of(fltk::app::widget_from_id::<fltk::button::Button>("pages_butn").as_ref().unwrap(), 4)
             .with_label("&Submit");
         Button::default()
             .with_id("clear_butn")
@@ -209,7 +212,7 @@ impl<'a> FltkHost<'a> {
         .unwrap()
         .set_callback({
             move |_| {
-                query_butn_sndr.send(Message::Query(QueryType::UserDefined(fltk::app::widget_from_id::<fltk::input::Input>("text_input").as_ref().unwrap().value().clone()), FetchFlag::False));
+                query_butn_sndr.send(Message::Query(QueryType::UserDefined(fltk::app::widget_from_id::<fltk::input::MultilineInput>("text_input").as_ref().unwrap().value().clone()), FetchFlag::False));
                 query_butn_sndr.send(Message::FillGrid(1));
             }
         });
@@ -235,7 +238,7 @@ impl<'a> FltkHost<'a> {
         fltk::app::widget_from_id::<fltk::button::Button>("tables_butn")
         .as_mut()
         .unwrap()
-        .handle(move |tables_butn, ev: fltk::enums::Event| {
+        .handle(move |_, ev: fltk::enums::Event| {
             match ev {
                 fltk::enums::Event::Push => {
                     tables_butn_sndr.send(Message::Query(QueryType::SqlFunction(Request::Tables(2)), FetchFlag::False));
@@ -264,8 +267,7 @@ impl<'a> FltkHost<'a> {
             }
         });
 
-        fltk::app::widget_from_id::<fltk_table::SmartTable>("tables_grid")
-        .as_mut()
+        self.smart_tables.get_mut("tables_grid")
         .unwrap()
         .handle(move |tables_grid_ref, ev: fltk::enums::Event| {
             match ev {
@@ -335,17 +337,17 @@ impl<'a> FltkHost<'a> {
                         Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => self.conn.connection.clone().unwrap(),
                         None => { String::from("None") },
                     };
-                    if fltk::app::widget_from_id::<fltk_table::SmartTable>("tables_grid").as_ref().unwrap().get_selection() > (-1, -1, -1, -1) {
+                    if self.smart_tables.get_mut("record_grid").unwrap().get_selection() > (-1, -1, -1, -1) {
                         let mut table_name: String = String::new();
                         table_name = match fetch_flag {
                             FetchFlag::True => {
-                                let (row, col, _, _) = fltk::app::widget_from_id::<fltk_table::SmartTable>("tables_grid").as_ref().unwrap().get_selection();
-                                fltk::app::widget_from_id::<fltk_table::SmartTable>("tables_grid").as_ref().unwrap().cell_value(row, col)
+                                let (row, col, _, _) =  self.smart_tables.get("tables_grid").unwrap().get_selection();
+                                self.smart_tables.get("tables_grid").unwrap().cell_value(row, col)
                             },
                             FetchFlag::False => { String::new() }
                         };
                         query = QueryType::SqlFunction(Request::Columns(table_name));
-                        fltk::app::widget_from_id::<fltk_table::SmartTable>("tables_grid").as_mut().unwrap().unset_selection();
+                        self.smart_tables.get_mut("tables_grid").unwrap().unset_selection();
                     };
                     match attempt_query(query, &db_name[..], self.conn.connection_type.as_ref()) {
                         Ok(value) => {
@@ -357,7 +359,7 @@ impl<'a> FltkHost<'a> {
                     }
                 },
                 Some(Message::Save) => {
-                    let the_data: String = AuxFuncs::translateStringVecToCSV(&fltk::app::widget_from_id::<fltk_table::SmartTable>("record_grid").as_ref().unwrap().data());
+                    let the_data: String = AuxFuncs::translateStringVecToCSV(&self.smart_tables.get("record_grid").unwrap().data());
     
                     if the_data.len() > 0 {
                         match sqlite3::save_results(the_data) {
@@ -383,18 +385,18 @@ impl<'a> FltkHost<'a> {
     
                     //then fill the grid with the recordset because it passed
                     if self.conn.result_code == Some(1) {
-                       /*
+                       /*   // I'm passing the full recordset currently. I'll worry about re-implementing pages at a later time
                         let page_index: usize = fltk::app::widget_from_id::<fltk::input::Input>("pages_input")
                             .unwrap()
                             .value()
                             .parse::<usize>()
                             .unwrap(); */
                         
-                        let mut x = match table_index {
-                            1 => { fltk::app::widget_from_id::<fltk_table::SmartTable>("record_grid").unwrap() },
-                            2 => { fltk::app::widget_from_id::<fltk_table::SmartTable>("tables_grid").unwrap() },
-                            3 => { fltk::app::widget_from_id::<fltk_table::SmartTable>("columns_grid").unwrap() },
-                            _ => { fltk::app::widget_from_id::<fltk_table::SmartTable>("record_grid").unwrap() },
+                        let x: &mut SmartTable = match table_index {
+                            1 => {  self.smart_tables.get_mut("record_grid").unwrap() },
+                            2 => {  self.smart_tables.get_mut("tables_grid").unwrap() },
+                            3 => {  self.smart_tables.get_mut("columns_grid").unwrap() },
+                            _ => {  self.smart_tables.get_mut("record_grid").unwrap() },
                         };
     
                         //slice the recordset into a single page
@@ -403,17 +405,17 @@ impl<'a> FltkHost<'a> {
                             Some(ref rs) => rs.records.clone(),
                             None => { Vec::<Record>::new() },
                         };
-                        fill_table(&self.conn.record_set.clone().unwrap(), &mut x, page_of_records);
+                        fill_table(&self.conn.record_set.clone().unwrap(), x, page_of_records);
                     }
                 },
                 Some(Message::ClearGrid) => {
-                    clear_table(&mut fltk::app::widget_from_id::<fltk_table::SmartTable>("record_grid").unwrap());
+                    clear_table(self.smart_tables.get_mut("record_grid").unwrap());
                 },
-                Some(Message::RandomNumber(indx, num)) => {
-//                    outputs[indx].set_value(&num.to_string()[..]);
+                Some(Message::RandomNumber(_indx, _num)) => {
+//                    outputs[indx].set_value(&num.to_string()[..]);    // Not worrying about implementing multi threaded jobs at this time, commenting out
                 },
                 Some(Message::LaunchObserver) => {
-//                    spawn_observer(&mut self, &mut outputs, &mut workers, main_app_sender.clone());
+//                    spawn_observer(&mut self, &mut outputs, &mut workers, main_app_sender.clone()); // Not worrying about implementing multi threaded jobs at this time, commenting out
                 },
                 Some(Message::SqlServerPacket(packet)) => {
                     match packet { //sqlite
@@ -757,7 +759,5 @@ fn spawn_observer(
     f.fltk_windows[1].end();
     f.fltk_windows[1].show();
 }
-
-
 
 /* <-- Functions */
