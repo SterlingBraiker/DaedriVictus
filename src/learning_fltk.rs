@@ -23,7 +23,7 @@ use crate::sqlite3_interface as sqlite3;
 use fltk_table::{SmartTable, TableOpts};
 
 use crate::sql_aux_funcs::{
-    Connection, Record, RecordSet, SqlData, SqlError, SqlType, Translate,
+    Connection, Record, RecordSet, SqlData, SqlType, Translate,
     ConnectionBase, Request, QueryType,
 };
 use crate::AuxFuncs;
@@ -72,7 +72,6 @@ impl<'a> FltkHost<'a> {
                 result_code: None,
                 result_details: None,
                 connection_type: None,
-                error_interface: None,
             },
             receiver: None,
             sender: None,
@@ -80,7 +79,7 @@ impl<'a> FltkHost<'a> {
         }
     }
 
-    fn construct(&mut self) -> Result<(), SqlError> {
+    fn construct(&mut self) -> Result<(), String> {
         self.fltk_windows.push(window::Window::default()
         .with_id("sql_window")
         .with_size(1280, 760)
@@ -195,6 +194,7 @@ impl<'a> FltkHost<'a> {
             self.sender = Some(a);
             self.receiver = Some(b);
         }
+
         let query_butn_sndr:    Sender<Message> = self.sender.as_ref().unwrap().clone();
         let save_butn_sndr:     Sender<Message> = self.sender.as_ref().unwrap().clone();
         let tables_butn_sndr:   Sender<Message> = self.sender.as_ref().unwrap().clone();
@@ -327,7 +327,7 @@ impl<'a> FltkHost<'a> {
         Ok(())
     }
 
-    fn event_loop(&mut self) -> Result<(), SqlError> {
+    fn event_loop(&mut self) -> Result<(), String> {
         while self.fltk_app.wait() {
             match self.receiver.as_ref().unwrap().recv() {
                 Some(Message::Query(mut query, fetch_flag)) => {
@@ -352,7 +352,7 @@ impl<'a> FltkHost<'a> {
                             self.conn.assemble_rs(value);
                         }
                         Err(E) => {
-                            self.conn.assemble_err(E);
+                            println!("{}", E);
                         }
                     }
                 },
@@ -479,7 +479,7 @@ static SQLITE_TABLES: &str = "select name from sqlite_schema where type = 'table
 /* <-- Const */
 /* --> Functions */
 
-pub fn entry_point() -> Result<(), SqlError> {
+pub fn entry_point() -> Result<(), String> {
     let mut f: FltkHost = FltkHost::new();
 
     f.construct();
@@ -527,13 +527,13 @@ fn attempt_query(
     request: QueryType,
     db_name: &str,
     db_interface: Option<&ConnectionBase>,
-) -> Result<RecordSet, SqlError> {
+) -> Result<RecordSet, String> {
     let result = match db_interface {
-        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), request) },
-        Some(&ConnectionBase::Sqlite) => { crate::sqlite3_interface::raw_query(String::from(db_name), request) },
-        None => { Err(SqlError::None) },
+        Some(&ConnectionBase::Odbc) => { crate::odbc_interface::entry_point(String::from(db_name), request).unwrap() },
+        Some(&ConnectionBase::Sqlite) => { crate::sqlite3_interface::raw_query(String::from(db_name), request).unwrap() },
+        None => { return Err(String::from("Oops")) },
     };
-    result
+    Ok(result)
 }
 
 fn clear_table(table: &mut SmartTable) {

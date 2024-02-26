@@ -1,6 +1,6 @@
 /* --> Imports */
 
-use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlError, SqlType, Translate,
+use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlType, Translate,
     QueryType, Request};
 pub use sqlite::{
     Bindable, BindableWithIndex, Connection, Error, State, Statement, Type,
@@ -20,11 +20,8 @@ use std::{collections::HashMap, fs, io};
 /* <-- Enums */
 /* --> Functions */
 
-pub fn raw_query(db_name: String, request: QueryType) -> Result<RecordSet, SqlError> {
-    let db_handle = match sqlite::open(&db_name) {
-        Ok(T) => T,
-        Err(E) => return Err(SqlError::Sqlite(E)),
-    };
+pub fn raw_query(db_name: String, request: QueryType) -> Result<RecordSet, sqlite::Error> {
+    let db_handle = sqlite::open(&db_name)?;
 
 
     let query  = match request {
@@ -58,17 +55,7 @@ pub fn cli_query(db_name: String) -> Result<(), sqlite::Error> {
             .read_line(&mut query)
             .expect("Failed to read line.");
 
-        let result = match select_from(&db_handle, query.trim()) {
-            Ok(T) => T,
-            Err(E) => {
-                match E {
-                    SqlError::Sqlite(Er) => return Err(Er),
-                    _ => {
-                        panic!("How did a different kind of error get in here?")
-                    }
-                };
-            }
-        };
+        let result = select_from(&db_handle, query.trim())?;
 
         let csv_printout: String = print_results(&result);
         println!("\n==============\nDone printing.\nSave results?(Y/N)");
@@ -113,11 +100,8 @@ fn build_db(db_handle: &sqlite::Connection) -> Result<(), sqlite::Error> {
     Ok(())
 }
 
-fn select_from(db_handle: &sqlite::Connection, query: &str) -> Result<RecordSet, SqlError> {
-    let mut stmt = match db_handle.prepare(query) {
-        Ok(T) => T,
-        Err(E) => return Err(SqlError::Sqlite(E)),
-    };
+fn select_from(db_handle: &sqlite::Connection, query: &str) -> Result<RecordSet, sqlite::Error> {
+    let mut stmt = db_handle.prepare(query)?;
 
     //bind parameters function call here
     //construct recordset
@@ -141,10 +125,8 @@ fn select_from(db_handle: &sqlite::Connection, query: &str) -> Result<RecordSet,
         //parse the columns in the row
         for (name, _) in &record_set.column_info {
             // 'name' will index the row and fetch columns
-            let read_value = match stmt.read::<Option<sqlite::Value>, _>(&name[..]) {
-                Ok(T) => T,
-                Err(E) => return Err(SqlError::Sqlite(E)),
-            };
+            let read_value = stmt.read::<Option<sqlite::Value>, _>(&name[..])?;
+
             match read_value {
                 //fetched data from a column
                 Some(value) => {

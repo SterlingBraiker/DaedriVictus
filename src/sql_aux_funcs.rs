@@ -3,7 +3,7 @@
 use crate::odbc_interface::*;
 use crate::sqlite3_interface::*;
 use odbc::*;
-use std::collections::HashMap;
+use std::{collections::HashMap, error::Error, fmt};
 
 /* <-- Imports */
 /* --> Structs */
@@ -15,7 +15,6 @@ pub struct Connection {
     pub result_code: Option<i32>,
     pub result_details: Option<String>,
     pub connection_type: Option<ConnectionBase>,
-    pub error_interface: Option<SqlError>,
 }
 
 // Handles all query results (records)
@@ -44,14 +43,6 @@ pub enum SqlType {
     Odbc(odbc::ffi::SqlDataType),
 }
 
-#[derive(Default, Debug)]
-pub enum SqlError {
-    Sqlite(sqlite::Error),
-    Odbc(DiagnosticRecord),
-    #[default]
-    None,
-}
-
 // if the type of query is user submitted, or a SQLFunction
 #[derive(Clone)]
 pub enum QueryType {
@@ -73,66 +64,54 @@ pub enum ConnectionBase {
     Odbc,
     Sqlite,
 }
-impl RecordSet {
 
+impl RecordSet {
     //add methods self.keep() and self.expel(), to isolate a single column in the recordset to either keep or get rid of
     pub fn keep(
         &mut self,
-        index: String) -> std::result::Result<(), SqlError> { // remove the columns from each record
+        index: String) { // remove the columns from each record
         for rec in &mut self.records {
             rec.columns.retain(|k, _| *k == index);
         }
 
         self.reconsile(index);
-
-        Ok(())
     }
 
-    fn reconsile(&mut self, index: String) {
+    fn reconsile(
+        &mut self,
+        index: String) {
         let mut new_column_order: Vec<String> = Vec::new();
         new_column_order.push(index.clone());
         self.column_order = new_column_order;
-        self.column_info.retain(|k, _| *k == index)
+        self.column_info.retain(|k, _| *k == index);
     }
 
     pub fn construct_sqlite(
         &mut self,
         stmt: &mut sqlite::Statement,
-    ) -> std::result::Result<(), SqlError> {
-        match stmt.next() {
-            Ok(_) => {}
-            Err(E) => return Err(SqlError::Sqlite(E)),
-        };
+    ) -> std::result::Result<(), sqlite::Error> {
+        stmt.next()?;
 
         for name in stmt.column_names() {
-            let res = match stmt.column_type(&String::from(&name[..])[..]) {
-                Ok(T) => T,
-                Err(E) => return Err(SqlError::Sqlite(E)),
-            };
+            let res = stmt.column_type(&String::from(&name[..])[..])?;
+
             self.column_info
                 .insert(String::from(&name[..]), SqlType::Sqlite(res));
             self.column_order.push(String::from(&name[..]));
         }
-        match stmt.reset() {
-            Ok(_) => Ok(()),
-            Err(E) => return Err(SqlError::Sqlite(E)),
-        }
+
+        Ok(stmt.reset()?)
     } //fill fields 'column_count', 'column_info'
 
     pub fn construct_odbc(
         &mut self,
         stmt: &mut odbc::Statement<'_, '_, Allocated, HasResult, odbc_safe::AutocommitOn>,
-    ) -> std::result::Result<(), SqlError> {
-        let num_cols: i16 = match stmt.num_result_cols() {
-            Ok(i) => i as i16,
-            Err(E) => return Err(SqlError::Odbc(E)),
-        };
+    ) -> std::result::Result<(), DiagnosticRecord> {
+        let num_cols: i16 = stmt.num_result_cols()?;
 
         for col_index in 1..=num_cols {
-            let col_description: ColumnDescriptor = match stmt.describe_col(col_index as u16) {
-                Ok(T) => T,
-                Err(E) => return Err(SqlError::Odbc(E)),
-            };
+            let col_description: ColumnDescriptor = stmt.describe_col(col_index as u16)?;
+
             self.column_info.insert(
                 String::from(col_description.name.clone()),
                 SqlType::Odbc(col_description.data_type),
@@ -203,11 +182,6 @@ impl Connection {
     pub fn assemble_rs(&mut self, donor_rs: RecordSet) {
         self.record_set = Some(donor_rs);
         self.result_code = Some(1 as i32);
-    }
-
-    pub fn assemble_err(&mut self, the_error: SqlError) -> () {
-        self.result_code = Some(-1 as i32);
-        self.error_interface = Some(the_error);
     }
 }
 
