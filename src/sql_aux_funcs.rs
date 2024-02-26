@@ -52,6 +52,7 @@ pub enum SqlError {
     None,
 }
 
+
 // if the type of query is user submitted, or a SQLFunction
 #[derive(Clone)]
 pub enum QueryType {
