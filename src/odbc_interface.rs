@@ -45,9 +45,13 @@ fn execute_statement<'env>(
 
     let results: ResultSetState<'_, '_, _, AutocommitOn> = match request {
         QueryType::SqlFunction(c) => {
-            let new_stmt = get_tables(stmt, c)?;
-            ResultSetState::from(Data(new_stmt)) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
-        
+//  omit, implement a temporary call to fetch column titles until get_tables is fully implemented
+//            let new_stmt = get_tables(stmt, c)?;
+//            ResultSetState::from(Data(new_stmt)) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
+            match c {
+                Request::Columns(c) => stmt.exec_direct(&c)?,
+                _ => { return Err(DiagnosticRecord::empty()) }
+            }
         },
         QueryType::UserDefined(s) => { 
             stmt.exec_direct(&s)?

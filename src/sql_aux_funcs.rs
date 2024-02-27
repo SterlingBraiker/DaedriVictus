@@ -18,7 +18,7 @@ pub struct Connection {
 }
 
 // Handles all query results (records)
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct RecordSet {
     pub column_info: HashMap<String, SqlType>,
     pub column_order: Vec<String>,
