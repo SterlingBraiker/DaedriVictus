@@ -337,7 +337,7 @@ impl FltkHost {
                         Some(crate::sql_aux_funcs::ConnectionBase::Odbc) | Some(crate::sql_aux_funcs::ConnectionBase::Sqlite) => self.conn.connection.clone().unwrap(),
                         None => { String::from("None") },
                     };
-                    if self.smart_tables.get_mut("record_grid").unwrap().get_selection() > (-1, -1, -1, -1) {
+                    if self.smart_tables.get_mut("tables_grid").unwrap().get_selection() != (-1, -1, -1, -1) {
                         let mut table_name: String = String::new();
                         table_name = match fetch_flag {
                             FetchFlag::True => {
@@ -346,6 +346,7 @@ impl FltkHost {
                             },
                             FetchFlag::False => { String::new() }
                         };
+                        println!("table_name: {}", table_name);
                         //implement a temporary column fetch function until get_tables() is fully implemented
 //                        query = QueryType::SqlFunction(Request::Columns(table_name));
                         let mut c: String = String::from("select top 1 * from ;");
@@ -541,7 +542,7 @@ fn attempt_query(
                 Err(_) => RecordSet::default(),
         } }, // need to implement similar error handling here for ODBC
         Some(&ConnectionBase::Sqlite) => { 
-            match crate::sqlite3_interface::raw_query(String::from(db_name), request) {
+            match crate::sqlite3_interface::query_interface(String::from(db_name), request) {
                 Ok(r) => r,
                 Err(e) => { println!("{}", e.message.unwrap()); RecordSet::default() },
             }

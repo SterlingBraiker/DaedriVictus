@@ -1,7 +1,7 @@
 /* --> Imports */
 
 use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlType, Translate,
-    QueryType, Request};
+    QueryType, Request, ConnectionBase};
 pub use sqlite::{
     Bindable, BindableWithIndex, Connection, Error, State, Statement, Type,
     Value::{
@@ -20,21 +20,60 @@ use std::{collections::HashMap, fs, io};
 /* <-- Enums */
 /* --> Functions */
 
-pub fn raw_query(db_name: String, request: QueryType) -> Result<RecordSet, sqlite::Error> {
+pub fn query_interface(db_name: String, request: QueryType) -> Result<RecordSet, sqlite::Error> {
+    match request {
+        QueryType::SqlFunction(request_type) => {
+            match request_type {
+                Request::Tables(_) => get_tables(db_name),
+                Request::Columns(c) => get_columns(db_name, c),
+                Request::Schema(_) => { Ok(RecordSet::default()) },
+            }
+        },
+        QueryType::UserDefined(s) => { raw_query(db_name, s) },
+    }
+}
+
+pub fn raw_query(db_name: String, query: String) -> Result<RecordSet, sqlite::Error> {
     let db_handle = sqlite::open(&db_name)?;
 
 
-    let query  = match request {
-        QueryType::SqlFunction(_) => {
-            String::from("select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';")
-        },
-        QueryType::UserDefined(s) => { s },
-    };
     //do I need to trim the query here? Is this always a safe practice?
     // will most sql engines trim query strings by default anyway?
     let result = select_from(&db_handle, query.trim())?;
 
     Ok(result)
+}
+
+fn get_tables(db_name: String) -> Result<RecordSet, sqlite::Error> {
+    let query: String = String::from("select name from sqlite_schema where type = 'table' and name not like 'sqlite_%';");
+    raw_query(db_name, query)
+}
+
+fn get_columns(db_name: String, table_name: String) -> Result<RecordSet, sqlite::Error> {
+    let db_handle = sqlite::open(&db_name)?;
+    let input = format!("select * from {table_name}");
+
+    let query: sqlite::Statement = db_handle.prepare(input)?;
+    let column_names: &[String] = query.column_names();
+
+    let mut record_set: RecordSet = RecordSet {
+        column_info: HashMap::new(),
+        column_order: Vec::new(),
+        records: Vec::new(),
+    };
+
+    record_set.column_info.insert(String::from("Column"), SqlType::Sqlite(sqlite::Type::String));
+    record_set.column_order.push(String::from("Column"));
+
+    for col_name in column_names {
+        let mut record: Record = Record {
+            columns: HashMap::new(),
+            data_type: Some(ConnectionBase::Sqlite),
+        };
+        record.columns.insert(String::from("Column"), Some(SqlData::Sqlite(sqlite::Value::String(col_name.to_owned()))));
+        record_set.records.push(record);
+    };
+    Ok(record_set)
 }
 
 pub fn cli_query(db_name: String) -> Result<(), sqlite::Error> {
