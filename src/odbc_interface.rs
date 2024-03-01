@@ -4,10 +4,10 @@ use crate::sql_aux_funcs::{Record, RecordSet, SqlData, SqlType, Translate,
     QueryType, Request};
 pub use odbc::{
     create_environment_v3, odbc_safe::AutocommitOn, Connection, Data, DiagnosticRecord, Executed,
-    NoData, ResultSetState, Statement, Version3,
+    NoData, ResultSetState, Statement, Version3, Handle,
 };
 use odbc::{odbc_safe::ResultSet, ColumnDescriptor};
-use std::{collections::HashMap, io, ptr::null_mut};
+use std::{collections::HashMap, io, ptr::null_mut, ptr::*};
 
 /* <-- Imports */
 /* --> Structs */
@@ -45,12 +45,10 @@ fn execute_statement<'env>(
 
     let results: ResultSetState<'_, '_, _, AutocommitOn> = match request {
         QueryType::SqlFunction(c) => {
-//  omit, implement a temporary call to fetch column titles until get_tables is fully implemented
-//            let new_stmt = get_tables(stmt, c)?;
-//            ResultSetState::from(Data(new_stmt)) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
             match c {
-                Request::Columns(c) => stmt.exec_direct(&c)?,
-                _ => { return Err(DiagnosticRecord::empty()) }
+                Request::Columns(c) => { get_columns(conn, String::from("cd_employees"), String::from("%"), String::from(""), String::from(""))? },
+                Request::Tables(t) => { get_tables(stmt, t)? },
+                Request::Schema(sch) => { return Err(DiagnosticRecord::empty()) },
             }
         },
         QueryType::UserDefined(s) => { 
@@ -118,39 +116,63 @@ fn execute_statement<'env>(
 
 fn get_tables<'a, 'b>(
     stmt: Statement<'a, 'b, odbc::Allocated, odbc::NoResult, AutocommitOn>,
-    request: Request,
-) -> Result<Statement<'a, 'b, odbc::Executed, odbc::HasResult, AutocommitOn>, DiagnosticRecord> {
+    _table_index: u8,
+) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> {
     // define the 4 parameters to be passed into stmt.tables()
     // stmt.tables() can return information about schemas, tables, or columns
     // see msdn for more information
-    let (c, s, tn, tt) = match request {
-        Request::Schema(index) => {
-            (
-                String::from(""),
-                String::from(""),
-                String::from(""),
-                String::from(""),
-            )
-        },
-        Request::Tables(_index) => {
-            (
-                String::from(""),
-                String::from("dba"),
-                String::from(""),
-                String::from(""),
-            )
-        },
-        Request::Columns(table_name) => {
-            (
-                String::from(""),
-                String::from("dba"),
-                String::from(table_name),
-                String::from(""),
-            )
-        },
-    };
+    let (c, s, tn, tt) =
+    (
+        String::from(""),
+        String::from("dba"),
+        String::from(""),
+        String::from(""),
+    );
 
-    stmt.tables(&c, &s, &tn, &tt)
+    let new_stmt: Statement<'a, 'b, _, odbc::HasResult, AutocommitOn> = stmt.tables(&c, &s, &tn, &tt)?;
+    Ok(ResultSetState::from(Data(new_stmt))) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
 }
 
+
+fn get_columns(
+    conn: &Connection<'env, AutocommitOn>,
+    mut table_name: String, 
+    mut column_name: String, 
+    mut catalog_name: String, 
+    mut schema_name: String,
+) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> {
+    let table_length: odbc::ffi::SQLSMALLINT = table_name.len() as i16;
+    let table_encoded: Vec<u16> = String::from(table_name).encode_utf16().collect();
+    let table_ptr: *const u16 = std::ptr::addr_of!(table_encoded);
+
+    let column_length: odbc::ffi::SQLSMALLINT = column_name.len() as i16;
+    let column_location: Vec<u16> = column_name.encode_utf16().collect();
+
+    let catalog_length: odbc::ffi::SQLSMALLINT = catalog_name.len() as i16;
+    let catalog_location: Vec<u16> = catalog_name.encode_utf16().collect();
+
+    let schema_length: odbc::ffi::SQLSMALLINT = schema_name.len() as i16;
+    let schema_location: Vec<u16> = schema_name.encode_utf16().collect();
+
+    let mut stmt = match Statement::with_parent(conn) {
+        Ok(s) => s,
+        Err(_) => return Err(DiagnosticRecord::empty()) ,
+    };
+    
+    unsafe {
+        odbc::ffi::SQLColumnsW(
+        stmt.handle(), 
+        *catalog_location,
+        catalog_length,
+        *schema_location,
+        schema_length,
+        *table_location,
+        table_length,
+        *column_location,
+        column_length
+        );
+    }
+
+    Ok(ResultSetState::from(Data(stmt)));
+}
 /* <-- Functions */
