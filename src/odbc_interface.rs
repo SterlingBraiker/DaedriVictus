@@ -41,12 +41,12 @@ fn execute_statement<'env>(
     conn: &Connection<'env, AutocommitOn>,
     request: QueryType,
 ) -> Result<RecordSet, DiagnosticRecord> {
-    let stmt = Statement::with_parent(conn)?;
+    let stmt: Statement<'_, '_, odbc::Allocated, odbc::NoResult, AutocommitOn> = Statement::with_parent(conn)?;
 
     let results: ResultSetState<'_, '_, _, AutocommitOn> = match request {
         QueryType::SqlFunction(c) => {
             match c {
-                Request::Columns(c) => { get_columns(conn, String::from("cd_employees"), String::from("%"), String::from(""), String::from(""))? },
+                Request::Columns(c) => { get_columns(String::from(c), stmt)? },
                 Request::Tables(t) => { get_tables(stmt, t)? },
                 Request::Schema(sch) => { return Err(DiagnosticRecord::empty()) },
             }
@@ -134,45 +134,13 @@ fn get_tables<'a, 'b>(
 }
 
 
-fn get_columns(
-    conn: &Connection<'env, AutocommitOn>,
-    mut table_name: String, 
-    mut column_name: String, 
-    mut catalog_name: String, 
-    mut schema_name: String,
-) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> {
-    let table_length: odbc::ffi::SQLSMALLINT = table_name.len() as i16;
-    let table_encoded: Vec<u16> = String::from(table_name).encode_utf16().collect();
-    let table_ptr: *const u16 = std::ptr::addr_of!(table_encoded);
+fn get_columns<'a, 'b>(
+    table_name: String, 
+    stmt: Statement<'a, 'a, odbc::Allocated, odbc::NoResult, AutocommitOn>,
+) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> where 'a: 'b{ 
+    println!("table name in get_columns: {}", table_name);
+    let result: ResultSetState<'a, 'b, odbc::Allocated, AutocommitOn> = stmt.exec_direct(&format!("select top 1 * from {}", table_name))?;
 
-    let column_length: odbc::ffi::SQLSMALLINT = column_name.len() as i16;
-    let column_location: Vec<u16> = column_name.encode_utf16().collect();
-
-    let catalog_length: odbc::ffi::SQLSMALLINT = catalog_name.len() as i16;
-    let catalog_location: Vec<u16> = catalog_name.encode_utf16().collect();
-
-    let schema_length: odbc::ffi::SQLSMALLINT = schema_name.len() as i16;
-    let schema_location: Vec<u16> = schema_name.encode_utf16().collect();
-
-    let mut stmt = match Statement::with_parent(conn) {
-        Ok(s) => s,
-        Err(_) => return Err(DiagnosticRecord::empty()) ,
-    };
-    
-    unsafe {
-        odbc::ffi::SQLColumnsW(
-        stmt.handle(), 
-        *catalog_location,
-        catalog_length,
-        *schema_location,
-        schema_length,
-        *table_location,
-        table_length,
-        *column_location,
-        column_length
-        );
-    }
-
-    Ok(ResultSetState::from(Data(stmt)));
+    Ok(result)
 }
 /* <-- Functions */
