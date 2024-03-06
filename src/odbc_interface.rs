@@ -43,26 +43,70 @@ fn execute_statement<'env>(
 ) -> Result<RecordSet, DiagnosticRecord> {
     let stmt: Statement<'_, '_, odbc::Allocated, odbc::NoResult, AutocommitOn> = Statement::with_parent(conn)?;
 
-    let results: ResultSetState<'_, '_, _, AutocommitOn> = match request {
+    let recordset: RecordSet = match request.clone() {
         QueryType::SqlFunction(c) => {
             match c {
-                Request::Columns(c) => { get_columns(String::from(c), stmt)? },
-                Request::Tables(t) => { get_tables(stmt, t)? },
+                Request::Columns(c) => { 
+                    let rss = get_columns(String::from(c), stmt)?;
+                    let rs = resultset_to_recordset(rss)?;
+                    sqlcolumns(rs)
+                },
+                Request::Tables(t) => { 
+                    let rss = get_tables(stmt, t)?;
+                    let rs = resultset_to_recordset(rss)?;
+                    sqltables(rs)
+                },
                 Request::Schema(sch) => { return Err(DiagnosticRecord::empty()) },
             }
         },
         QueryType::UserDefined(s) => { 
-            stmt.exec_direct(&s)?
+            resultset_to_recordset(stmt.exec_direct(&s)?)?
         },
     };
 
+    Ok(recordset)
+}
+
+fn get_tables<'a, 'b>(
+    stmt: Statement<'a, 'b, odbc::Allocated, odbc::NoResult, AutocommitOn>,
+    _table_index: u8,
+) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> {
+    // define the 4 parameters to be passed into stmt.tables()
+    // stmt.tables() can return information about schemas, tables, or columns
+    // see msdn for more information
+    let (c, s, tn, tt) =
+    (
+        String::from(""),
+        String::from("dba"),
+        String::from(""),
+        String::from(""),
+    );
+
+    let new_stmt: Statement<'a, 'b, _, odbc::HasResult, AutocommitOn> = stmt.tables(&c, &s, &tn, &tt)?;
+    Ok(ResultSetState::from(Data(new_stmt))) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
+}
+
+
+fn get_columns<'a, 'b>(
+    table_name: String, 
+    stmt: Statement<'a, 'a, odbc::Allocated, odbc::NoResult, AutocommitOn>,
+) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> where 'a: 'b{ 
+    println!("table name in get_columns: {}", table_name);
+    let result: ResultSetState<'a, 'b, odbc::Allocated, AutocommitOn> = stmt.exec_direct(&format!("select top 1 * from {}", table_name))?;
+
+    Ok(result)
+}
+
+fn resultset_to_recordset(
+    rss: ResultSetState<'_, '_, odbc::Allocated, AutocommitOn>
+) -> Result<RecordSet, DiagnosticRecord> {
     let mut recordset: RecordSet = RecordSet {
         column_info: HashMap::<String, SqlType>::new(),
         column_order: Vec::new(),
         records: Vec::<Record>::new(),
     };
 
-    match results {
+    match rss {
         Data(mut stmt) => {
             
             recordset.construct_odbc(&mut stmt)?;
@@ -108,39 +152,36 @@ fn execute_statement<'env>(
              a.push(b);
              recordset.add(b);
               */
-        }
-    }
-    recordset.keep(String::from("TABLE_NAME"));
+        },
+    };
     Ok(recordset)
 }
 
-fn get_tables<'a, 'b>(
-    stmt: Statement<'a, 'b, odbc::Allocated, odbc::NoResult, AutocommitOn>,
-    _table_index: u8,
-) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> {
-    // define the 4 parameters to be passed into stmt.tables()
-    // stmt.tables() can return information about schemas, tables, or columns
-    // see msdn for more information
-    let (c, s, tn, tt) =
-    (
-        String::from(""),
-        String::from("dba"),
-        String::from(""),
-        String::from(""),
-    );
+fn sqlcolumns(mut rs: RecordSet) -> RecordSet {
+    let mut new_rs: RecordSet = RecordSet {
+        column_info: HashMap::new(),
+        column_order: Vec::from([String::from("COLUMN_NAME")]),
+        records: Vec::new(),
+    };
 
-    let new_stmt: Statement<'a, 'b, _, odbc::HasResult, AutocommitOn> = stmt.tables(&c, &s, &tn, &tt)?;
-    Ok(ResultSetState::from(Data(new_stmt))) //the new Statement is converted to a ResultSetState<Statement> in order to match the return type that 'result' is defined as, on the line above. This allows a seamless transition to the 'match' statement below, on the 'result' variable
+    if rs.records.len() > 0 {
+        let mut new_records: Vec<Record> = Vec::new();
+        let record: Record = rs.records.pop().unwrap();
+        let list_of_column_names: Vec<String> = record.columns.into_keys().collect();
+        for x in list_of_column_names {
+            new_records.push(Record {
+                columns: HashMap::from([
+                    (String::from("COLUMN_NAME"), Some(SqlData::Odbc(x))),
+                    ]),
+                data_type: None,
+        })};
+        new_rs.records = new_records;
+    };
+    new_rs
 }
 
-
-fn get_columns<'a, 'b>(
-    table_name: String, 
-    stmt: Statement<'a, 'a, odbc::Allocated, odbc::NoResult, AutocommitOn>,
-) -> Result<ResultSetState<'a, 'b, odbc::Executed, AutocommitOn>, DiagnosticRecord> where 'a: 'b{ 
-    println!("table name in get_columns: {}", table_name);
-    let result: ResultSetState<'a, 'b, odbc::Allocated, AutocommitOn> = stmt.exec_direct(&format!("select top 1 * from {}", table_name))?;
-
-    Ok(result)
+fn sqltables(mut rs: RecordSet) -> RecordSet {
+    rs.keep(String::from("TABLE_NAME"));
+    rs
 }
 /* <-- Functions */
